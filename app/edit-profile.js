@@ -37,12 +37,11 @@ export default function Profile() {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
+      quality: 0.8,
     });
 
     if (!result.canceled) {
-      setProfilePicture(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      setProfilePicture(result.assets[0].uri);
     }
   };
 
@@ -63,7 +62,25 @@ export default function Profile() {
 
     setIsSubmitting(true);
     try {
-      const response = await axios.put(API_ENDPOINTS.PROFILE, { name, mobileNumber, profilePicture });
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('mobileNumber', mobileNumber);
+
+      if (profilePicture) {
+        if (!profilePicture.startsWith('http')) {
+          formData.append('profilePicture', {
+            uri: profilePicture,
+            type: 'image/jpeg',
+            name: 'profile.jpg',
+          });
+        }
+      } else {
+        formData.append('removeProfilePicture', 'true');
+      }
+
+      const response = await axios.put(API_ENDPOINTS.PROFILE, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       updateUserSession(response.data.user);
       setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
     } catch (error) {
