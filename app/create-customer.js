@@ -217,14 +217,10 @@ export default function CreateCustomer() {
       }
 
       if (id) {
-        await axios.put(`${API_ENDPOINTS.CUSTOMERS}/${id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        await axios.put(`${API_ENDPOINTS.CUSTOMERS}/${id}`, formData);
         setSuccessModal({ visible: true, message: 'Customer updated successfully!' });
       } else {
-        await axios.post(API_ENDPOINTS.CUSTOMERS, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        await axios.post(API_ENDPOINTS.CUSTOMERS, formData);
         setSuccessModal({ visible: true, message: 'Customer created successfully!' });
       }
     } catch (error) {

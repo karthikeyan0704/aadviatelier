@@ -78,9 +78,7 @@ export default function Profile() {
         formData.append('removeProfilePicture', 'true');
       }
 
-      const response = await axios.put(API_ENDPOINTS.PROFILE, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await axios.put(API_ENDPOINTS.PROFILE, formData);
       updateUserSession(response.data.user);
       setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
     } catch (error) {
