@@ -17,6 +17,8 @@ import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { Search, UserPlus, Trash2, Phone, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
+import ConfirmModal from '../../components/ConfirmModal';
+import SuccessModal from '../../components/SuccessModal';
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState([]);
@@ -24,6 +26,9 @@ export default function CustomersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [successModal, setSuccessModal] = useState({ visible: false, title: '', message: '' });
   const router = useRouter();
   const { user } = useAuth();
 
@@ -65,25 +70,27 @@ export default function CustomersScreen() {
   };
 
   const handleDelete = (id, name) => {
-    Alert.alert(
-      "Delete Customer",
-      `Are you sure you want to delete ${name}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              await axios.delete(`${API_ENDPOINTS.CUSTOMERS}/${id}`);
-              fetchCustomers();
-            } catch (error) {
-              Alert.alert("Error", "Failed to delete customer");
-            }
-          }
-        }
-      ]
-    );
+    setCustomerToDelete({ id, name });
+    setDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteCustomer = async () => {
+    setDeleteConfirmModal(false);
+    if (!customerToDelete) return;
+    
+    try {
+      await axios.delete(`${API_ENDPOINTS.CUSTOMERS}/${customerToDelete.id}`);
+      fetchCustomers();
+      setSuccessModal({ 
+        visible: true, 
+        title: 'Customer Deleted', 
+        message: `${customerToDelete.name} has been successfully deleted.` 
+      });
+      setCustomerToDelete(null);
+    } catch (error) {
+      Alert.alert("Error", "Failed to delete customer");
+      setCustomerToDelete(null);
+    }
   };
 
   const getInitials = (name) => {
@@ -174,6 +181,24 @@ export default function CustomersScreen() {
       {loading && !refreshing && (
         <ActivityIndicator style={styles.loader} size="large" color={Colors.primary} />
       )}
+
+      <ConfirmModal
+        visible={deleteConfirmModal}
+        title="Delete Customer"
+        message={`Are you sure you want to delete ${customerToDelete?.name}?`}
+        onCancel={() => { setDeleteConfirmModal(false); setCustomerToDelete(null); }}
+        onConfirm={confirmDeleteCustomer}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDestructive={true}
+      />
+
+      <SuccessModal 
+        visible={successModal.visible} 
+        title={successModal.title}
+        message={successModal.message} 
+        onDone={() => setSuccessModal({ visible: false, title: '', message: '' })} 
+      />
     </SafeAreaView>
   );
 }

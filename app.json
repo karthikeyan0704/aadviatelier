@@ -4,7 +4,7 @@
     "slug": "aadvi-atelier",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/aalogo.jpg",
+    "icon": "./assets/images/aalogo.png",
     "scheme": "client",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,7 +15,7 @@
       "package": "com.flareminds.aadviatelier",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/images/aalogo.jpg",
+        "foregroundImage": "./assets/images/aalogo.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/aalogo.jpg",
+          "image": "./assets/images/aalogo.png",
           "imageWidth": 300,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -51,7 +51,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

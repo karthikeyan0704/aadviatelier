@@ -43,8 +43,9 @@ export default function OrderDetails() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [workflowExpanded, setWorkflowExpanded] = useState(false);
-  const [successModal, setSuccessModal] = useState({ visible: false, message: '', title: '' });
+  const [successModal, setSuccessModal] = useState({ visible: false, message: '', title: '', onDone: null });
   const [confirmModal, setConfirmModal] = useState({ visible: false, stepIndex: null, stepName: '' });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [updatingStep, setUpdatingStep] = useState(null);
@@ -369,19 +370,22 @@ export default function OrderDetails() {
   };
 
   const handleDeleteOrder = () => {
-    Alert.alert('Delete Order', 'Are you sure you want to delete this order? This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await axios.delete(`${API_ENDPOINTS.ORDERS}/${id}`);
-          Alert.alert('Success', 'Order deleted successfully', [
-            { text: 'OK', onPress: () => router.back() }
-          ]);
-        } catch (error) {
-          Alert.alert('Error', 'Failed to delete order');
-        }
-      }}
-    ]);
+    setDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteOrder = async () => {
+    setDeleteConfirmModal(false);
+    try {
+      await axios.delete(`${API_ENDPOINTS.ORDERS}/${id}`);
+      setSuccessModal({ 
+        visible: true, 
+        title: 'Order Deleted', 
+        message: 'The order has been removed successfully.',
+        onDone: () => router.back()
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete order');
+    }
   };
 
   if (loading) {
@@ -833,11 +837,26 @@ export default function OrderDetails() {
         isDestructive={false}
       />
 
+      <ConfirmModal
+        visible={deleteConfirmModal}
+        title="Delete Order"
+        message="Are you sure you want to delete this order? This action cannot be undone."
+        onCancel={() => setDeleteConfirmModal(false)}
+        onConfirm={confirmDeleteOrder}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDestructive={true}
+      />
+
       <SuccessModal 
         visible={successModal.visible} 
         title={successModal.title}
         message={successModal.message} 
-        onDone={() => setSuccessModal({ visible: false, message: '', title: '' })} 
+        onDone={() => {
+          const customOnDone = successModal.onDone;
+          setSuccessModal({ visible: false, message: '', title: '', onDone: null });
+          if (customOnDone) customOnDone();
+        }} 
       />
     </SafeAreaView>
   );

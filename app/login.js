@@ -63,10 +63,11 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Image source={require('../assets/images/aalogo.jpg')} style={{width: '100%', height: '100%', borderRadius: 60}} resizeMode="cover" />
+            <Image source={require('../assets/images/aalogo.png')} style={{width: '100%', height: '100%', borderRadius: 60}} resizeMode="cover" />
           </View>
-          <Text style={styles.title}>AADVI</Text>
-          <Text style={styles.subtitle}>Designer Studio</Text>
+          <Text style={styles.title}>
+            Aadvi <Text style={{ color: Colors.secondary }}>Atelier</Text>
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -119,7 +120,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>© 2024 Aadvi Designer Studio</Text>
+          <Text style={styles.footerText}>© 2026 Aadvi Designer Studio</Text>
         </View>
       </ScrollView>
 
@@ -144,7 +145,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContainer: { flexGrow: 1, padding: Spacing.xl, justifyContent: 'center' },
   header: { alignItems: 'center', marginBottom: Spacing.xl * 2 },
-  logoContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md, ...Shadows.md },
+  logoContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md },
   logoText: { color: Colors.secondary, fontSize: 32, fontWeight: 'bold' },
   title: { fontSize: 36, fontWeight: 'bold', color: Colors.primary, letterSpacing: 4 },
   subtitle: { fontSize: 18, color: Colors.secondary, letterSpacing: 2, textTransform: 'uppercase' },
