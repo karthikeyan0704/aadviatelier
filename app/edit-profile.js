@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import SuccessModal from '../components/SuccessModal';
 
 export default function Profile() {
-  const { user, updateUserSession } = useAuth();
+  const { user, updateUserSession, token } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [mobileNumber, setMobileNumber] = useState(user?.mobileNumber || '');
   const [role, setRole] = useState(user?.role || '');
@@ -78,11 +78,24 @@ export default function Profile() {
         formData.append('removeProfilePicture', 'true');
       }
 
-      const response = await axios.put(API_ENDPOINTS.PROFILE, formData);
-      updateUserSession(response.data.user);
+      const response = await fetch(API_ENDPOINTS.PROFILE, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}` // Ensure token is passed since we bypass axios defaults
+        },
+        body: formData,
+      });
+
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.message || 'Failed to update profile');
+      }
+
+      updateUserSession(responseData.user);
       setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
     } catch (error) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to update profile');
+      Alert.alert('Error', error.message || 'Failed to update profile');
     } finally {
       setIsSubmitting(false);
     }
