@@ -2,9 +2,9 @@
   "expo": {
     "name": "AadviAtelier",
     "slug": "aadvi-atelier",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/aalogo.png",
+    "icon": "./assets/images/aalogo-v2.png",
     "scheme": "client",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,10 +13,10 @@
     },
     "android": {
       "package": "com.flareminds.aadviatelier",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/images/aalogo.png",
+        "foregroundImage": "./assets/images/aalogo-v2.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -32,7 +32,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/aalogo.png",
+          "image": "./assets/images/aalogo-v2.png",
           "imageWidth": 300,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
