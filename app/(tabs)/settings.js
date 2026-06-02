@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
@@ -37,7 +38,7 @@ export default function SettingsScreen() {
         <TouchableOpacity style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
           <View style={[styles.avatar, user?.profilePicture && { backgroundColor: 'transparent' }]}>
             {user?.profilePicture ? (
-              <Image source={{ uri: user.profilePicture }} style={{ width: 60, height: 60, borderRadius: 30 }} />
+              <Image source={{ uri: user.profilePicture }} style={{ width: 60, height: 60, borderRadius: 30 }} cachePolicy="none" contentFit="cover" />
             ) : (
               <User size={32} color={Colors.white} />
             )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -10,14 +10,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Image
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { User, Phone, Lock, Save, ArrowLeft, Camera } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -29,48 +28,68 @@ export default function Profile() {
   const [mobileNumber, setMobileNumber] = useState(user?.mobileNumber || '');
   const [role, setRole] = useState(user?.role || '');
   const [profilePicture, setProfilePicture] = useState(user?.profilePicture || null);
-  const [profilePictureBase64, setProfilePictureBase64] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
   const router = useRouter();
+  
+  // USE REFS for base64 - refs survive across re-renders and never get lost
+  const base64Ref = useRef(null);
+  const hasPendingImage = useRef(false);
 
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.3,
-      base64: true, // Also request base64 from ImagePicker as fallback
-    });
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+        base64: true,
+      });
 
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const uri = asset.uri;
-      setProfilePicture(uri);
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        const uri = asset.uri;
+        
+        hasPendingImage.current = true;
+        setProfilePicture(uri);
 
-      // Try FileSystem first, then fall back to ImagePicker's base64
-      let b64 = null;
+        let b64 = null;
 
-      // Method 1: FileSystem
-      try {
-        b64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-      } catch (fsError) {
-        // Method 2: ImagePicker built-in base64
-        if (asset.base64) {
+        // Method 1: Use base64 directly from ImagePicker (most reliable)
+        if (asset.base64 && asset.base64.length > 0) {
           b64 = asset.base64;
         }
-      }
 
-      if (b64) {
-        setProfilePictureBase64(b64);
+        // Method 2: FileSystem fallback
+        if (!b64) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          } catch (fsError) {
+            // FileSystem failed
+          }
+        }
+
+        if (b64 && b64.length > 0) {
+          base64Ref.current = b64;
+          Alert.alert('Photo Selected', 'Remember to tap "Update Profile" to save your changes.');
+        } else {
+          Alert.alert('❌ Error', 'Could not read image data. Please try a different photo.');
+          hasPendingImage.current = false;
+          base64Ref.current = null;
+        }
       }
+    } catch (err) {
+      Alert.alert('❌ Pick Error', err.message || 'Failed to pick image');
+      hasPendingImage.current = false;
+      base64Ref.current = null;
     }
   };
 
+  // Sync from user context only when no pending image
   useEffect(() => {
-    if (user) {
+    if (user && !hasPendingImage.current) {
       setName(user.name || '');
       setMobileNumber(user.mobileNumber || '');
       setRole(user.role || '');
@@ -91,13 +110,15 @@ export default function Profile() {
         mobileNumber,
       };
 
-      if (profilePictureBase64) {
-        payload.profilePictureBase64 = `data:image/jpeg;base64,${profilePictureBase64}`;
+      // Read from ref instead of state
+      const currentBase64 = base64Ref.current;
+
+      if (currentBase64 && currentBase64.length > 0) {
+        payload.profilePictureBase64 = `data:image/jpeg;base64,${currentBase64}`;
       } else if (!profilePicture) {
         payload.removeProfilePicture = 'true';
       }
 
-      // Use fetch directly to bypass any axios/multer issues
       const res = await fetch(API_ENDPOINTS.PROFILE, {
         method: 'POST',
         headers: {
@@ -110,6 +131,22 @@ export default function Profile() {
       const responseData = await res.json();
 
       if (res.ok && responseData.user) {
+        const newPicUrl = responseData.user.profilePicture;
+
+        // Clear pending state
+        hasPendingImage.current = false;
+        base64Ref.current = null;
+        
+        // Set the new Cloudinary URL with cache-bust param
+        if (newPicUrl) {
+          const bustUrl = newPicUrl.includes('?') 
+            ? `${newPicUrl}&_t=${Date.now()}` 
+            : `${newPicUrl}?_t=${Date.now()}`;
+          setProfilePicture(bustUrl);
+        } else {
+          setProfilePicture(null);
+        }
+
         await updateUserSession(responseData.user);
         setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
       } else {
@@ -120,6 +157,18 @@ export default function Profile() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Build the image source with cache-busting for Cloudinary URLs
+  const getImageSource = () => {
+    if (!profilePicture) return null;
+    if (profilePicture.startsWith('file://') || profilePicture.startsWith('content://')) {
+      return profilePicture;
+    }
+    if (profilePicture.includes('_t=')) {
+      return profilePicture;
+    }
+    return `${profilePicture}?_t=${Date.now()}`;
   };
 
   return (
@@ -142,7 +191,13 @@ export default function Profile() {
               <TouchableOpacity onPress={pickImage} style={{ position: 'relative', width: 100, height: 100 }}>
                 <View style={[styles.avatarPlaceholder, { overflow: 'hidden' }]}>
                   {profilePicture ? (
-                    <Image source={{ uri: profilePicture }} style={styles.avatarImage} />
+                    <Image 
+                      source={{ uri: getImageSource() }} 
+                      style={styles.avatarImage}
+                      cachePolicy="none"
+                      contentFit="cover"
+                      transition={200}
+                    />
                   ) : (
                     <User size={40} color={Colors.primary} />
                   )}
@@ -152,7 +207,7 @@ export default function Profile() {
                 </View>
               </TouchableOpacity>
               {profilePicture && (
-                <TouchableOpacity onPress={() => { setProfilePicture(null); setProfilePictureBase64(null); }} style={{marginTop: 10}}>
+                <TouchableOpacity onPress={() => { setProfilePicture(null); base64Ref.current = null; hasPendingImage.current = false; }} style={{marginTop: 10}}>
                   <Text style={{color: Colors.error, fontSize: 13, fontWeight: 'bold'}}>Remove Photo</Text>
                 </TouchableOpacity>
               )}
