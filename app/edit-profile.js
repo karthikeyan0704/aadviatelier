@@ -13,6 +13,7 @@ import {
   Image
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { User, Phone, Lock, Save, ArrowLeft, Camera } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -28,6 +29,7 @@ export default function Profile() {
   const [mobileNumber, setMobileNumber] = useState(user?.mobileNumber || '');
   const [role, setRole] = useState(user?.role || '');
   const [profilePicture, setProfilePicture] = useState(user?.profilePicture || null);
+  const [profilePictureBase64, setProfilePictureBase64] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
   const router = useRouter();
@@ -37,11 +39,33 @@ export default function Profile() {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.3,
+      base64: true, // Also request base64 from ImagePicker as fallback
     });
 
     if (!result.canceled) {
-      setProfilePicture(result.assets[0].uri);
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      setProfilePicture(uri);
+
+      // Try FileSystem first, then fall back to ImagePicker's base64
+      let b64 = null;
+
+      // Method 1: FileSystem
+      try {
+        b64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } catch (fsError) {
+        // Method 2: ImagePicker built-in base64
+        if (asset.base64) {
+          b64 = asset.base64;
+        }
+      }
+
+      if (b64) {
+        setProfilePictureBase64(b64);
+      }
     }
   };
 
@@ -62,38 +86,35 @@ export default function Profile() {
 
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('name', name);
-      formData.append('mobileNumber', mobileNumber);
+      const payload = {
+        name,
+        mobileNumber,
+      };
 
-      if (profilePicture) {
-        if (!profilePicture.startsWith('http')) {
-          formData.append('profilePicture', {
-            uri: profilePicture,
-            type: 'image/jpeg',
-            name: 'profile.jpg',
-          });
-        }
-      } else {
-        formData.append('removeProfilePicture', 'true');
+      if (profilePictureBase64) {
+        payload.profilePictureBase64 = `data:image/jpeg;base64,${profilePictureBase64}`;
+      } else if (!profilePicture) {
+        payload.removeProfilePicture = 'true';
       }
 
-      const response = await fetch(API_ENDPOINTS.PROFILE, {
-        method: 'PUT',
+      // Use fetch directly to bypass any axios/multer issues
+      const res = await fetch(API_ENDPOINTS.PROFILE, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}` // Ensure token is passed since we bypass axios defaults
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
-        body: formData,
+        body: JSON.stringify(payload),
       });
 
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(responseData.message || 'Failed to update profile');
-      }
+      const responseData = await res.json();
 
-      updateUserSession(responseData.user);
-      setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
+      if (res.ok && responseData.user) {
+        await updateUserSession(responseData.user);
+        setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
+      } else {
+        Alert.alert('Server Error', responseData.message || responseData.error || 'Unknown error');
+      }
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to update profile');
     } finally {
@@ -131,7 +152,7 @@ export default function Profile() {
                 </View>
               </TouchableOpacity>
               {profilePicture && (
-                <TouchableOpacity onPress={() => setProfilePicture(null)} style={{marginTop: 10}}>
+                <TouchableOpacity onPress={() => { setProfilePicture(null); setProfilePictureBase64(null); }} style={{marginTop: 10}}>
                   <Text style={{color: Colors.error, fontSize: 13, fontWeight: 'bold'}}>Remove Photo</Text>
                 </TouchableOpacity>
               )}

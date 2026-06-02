@@ -13,6 +13,7 @@ import {
   Image
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { User, Phone, Lock, Save, ArrowLeft, Camera, Trash2 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -41,11 +42,18 @@ export default function EditStaff() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
-      base64: true,
     });
 
     if (!result.canceled) {
-      setProfilePicture(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      const uri = result.assets[0].uri;
+      try {
+        const base64String = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        setProfilePicture(`data:image/jpeg;base64,${base64String}`);
+      } catch (error) {
+        Alert.alert("Error", "Failed to process the image. Please try another one.");
+      }
     }
   };
 
