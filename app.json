@@ -2,7 +2,7 @@
   "expo": {
     "name": "AadviAtelier",
     "slug": "aadvi-atelier",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/aalogo-v2.png",
     "scheme": "client",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.aadviatelier.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/aalogo-v2.png",
