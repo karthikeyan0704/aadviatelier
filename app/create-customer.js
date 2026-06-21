@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -34,6 +34,7 @@ export default function CreateCustomer() {
   const [loading, setLoading] = useState(false);
   const [profileImage, setProfileImage] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const searchInputRef = useRef(null);
   
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -389,14 +390,22 @@ export default function CreateCustomer() {
       </KeyboardAvoidingView>
 
       {/* Google Search Modal */}
-      <Modal visible={searchModalVisible} animationType="slide">
+      <Modal 
+        visible={searchModalVisible} 
+        animationType="slide"
+        onShow={() => {
+          setTimeout(() => {
+            searchInputRef.current?.focus();
+          }, 100);
+        }}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
               <ArrowLeft size={24} color={Colors.text} />
             </TouchableOpacity>
             <TextInput
-              autoFocus
+              ref={searchInputRef}
               style={styles.modalSearchInput}
               placeholder="Type area or street (e.g. Sulur)..."
               value={searchQuery}
