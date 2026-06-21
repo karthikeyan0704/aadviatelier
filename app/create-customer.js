@@ -206,26 +206,49 @@ export default function CreateCustomer() {
       formData.append('dateOfBirth', form.dateOfBirth.toISOString());
       formData.append('address', JSON.stringify(form.address));
 
-      if (profileImage) {
+      if (profileImage && profileImage.uri && !profileImage.uri.startsWith('http')) {
         formData.append('profileImage', {
           uri: profileImage.uri,
           type: 'image/jpeg',
           name: 'profile.jpg',
         });
-      } else {
+      } else if (!profileImage) {
         formData.append('removeProfileImage', 'true');
       }
 
-      if (id) {
-        await axios.put(`${API_ENDPOINTS.CUSTOMERS}/${id}`, formData);
-        setSuccessModal({ visible: true, message: 'Customer updated successfully!' });
-      } else {
-        await axios.post(API_ENDPOINTS.CUSTOMERS, formData);
-        setSuccessModal({ visible: true, message: 'Customer created successfully!' });
+      // Get the auth token from axios defaults
+      const authToken = axios.defaults.headers.common['Authorization'];
+
+      const url = id ? `${API_ENDPOINTS.CUSTOMERS}/${id}` : API_ENDPOINTS.CUSTOMERS;
+      const method = id ? 'PUT' : 'POST';
+
+      // Use fetch instead of axios — axios in React Native production builds
+      // often fails to set the correct multipart/form-data boundary, causing
+      // multer on the server to silently fail at parsing the request body.
+      const response = await fetch(url, {
+        method,
+        headers: {
+          ...(authToken ? { 'Authorization': authToken } : {}),
+          // Do NOT set Content-Type manually — React Native's fetch will
+          // auto-set it with the correct multipart boundary for FormData
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Server error');
       }
+
+      setSuccessModal({ 
+        visible: true, 
+        message: id ? 'Customer updated successfully!' : 'Customer created successfully!' 
+      });
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Failed to save customer");
+      console.error('Customer save error:', error);
+      const msg = error.message || 'Failed to save customer';
+      Alert.alert("Error", msg);
     } finally {
       setLoading(false);
     }
