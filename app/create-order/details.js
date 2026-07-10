@@ -7,7 +7,6 @@ import {
   TouchableOpacity, 
   ScrollView, 
   Switch,
-  Alert,
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
@@ -23,6 +22,7 @@ import axios from 'axios';
 import { API_ENDPOINTS } from '../../constants/ApiConfig';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SuccessModal from '../../components/SuccessModal';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function OrderDetails() {
   const router = useRouter();
@@ -50,6 +50,12 @@ export default function OrderDetails() {
   const [staffList, setStaffList] = useState([]);
   const [assignedTo, setAssignedTo] = useState({ cuttingMaster: null, stitchingMaster: null });
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
+  const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '' });
+
+  const showAlert = (type, title, message) => {
+    setCustomAlert({ visible: true, type, title, message });
+  };
+  const dismissAlert = () => setCustomAlert(prev => ({ ...prev, visible: false }));
 
   const [recording, setRecording] = useState(null);
   const [audioUri, setAudioUri] = useState(null);
@@ -87,11 +93,11 @@ export default function OrderDetails() {
         );
         setRecording(recording);
       } else {
-        Alert.alert('Permission Denied', 'Please grant microphone permissions to record audio.');
+        showAlert('warning', 'Permission Denied', 'Please grant microphone permissions to record audio.');
       }
     } catch (err) {
       console.error('Failed to start recording', err);
-      Alert.alert('Error', 'Failed to start recording.');
+      showAlert('error', 'Error', 'Failed to start recording.');
     }
   }
 
@@ -224,13 +230,13 @@ export default function OrderDetails() {
 
   const handleSubmit = async () => {
     if (!orderInfo.deliveryDate) {
-      Alert.alert('Missing Info', 'Please provide a Delivery Date');
+      showAlert('warning', 'Missing Info', 'Please provide a Delivery Date');
       return;
     }
 
     const parsedDeliveryDate = new Date(orderInfo.deliveryDate);
     if (isNaN(parsedDeliveryDate.getTime())) {
-      Alert.alert('Invalid Date', 'Please provide a valid Delivery Date (YYYY-MM-DD)');
+      showAlert('error', 'Invalid Date', 'Please provide a valid Delivery Date (YYYY-MM-DD)');
       return;
     }
 
@@ -238,7 +244,7 @@ export default function OrderDetails() {
     if (orderInfo.trialDate) {
       parsedTrialDate = new Date(orderInfo.trialDate);
       if (isNaN(parsedTrialDate.getTime())) {
-        Alert.alert('Invalid Date', 'Please provide a valid Trial Date (YYYY-MM-DD)');
+        showAlert('error', 'Invalid Date', 'Please provide a valid Trial Date (YYYY-MM-DD)');
         return;
       }
     }
@@ -333,7 +339,7 @@ export default function OrderDetails() {
     } catch (error) {
       console.error('Submit Error:', error.response?.data || error.message || error);
       const errMsg = error.response?.data?.message || error.message || 'Failed to create order';
-      Alert.alert('Error', errMsg);
+      showAlert('error', 'Order Failed', errMsg);
     } finally {
       setLoading(false);
     }
@@ -558,6 +564,7 @@ export default function OrderDetails() {
                 value={datePickerConfig.date}
                 mode="date"
                 display="default"
+                minimumDate={new Date()}
                 onChange={onDateChange}
               />
             )}
@@ -656,7 +663,16 @@ export default function OrderDetails() {
                 placeholder="0" 
                 keyboardType="numeric" 
                 value={orderInfo.advancePaid}
-                onChangeText={(v) => setOrderInfo({...orderInfo, advancePaid: v})}
+                onChangeText={(v) => {
+                  const total = calculateTotal();
+                  const num = parseFloat(v);
+                  if (!isNaN(num) && total > 0 && num > total) {
+                    setOrderInfo({...orderInfo, advancePaid: String(total)});
+                    showAlert('warning', 'Amount Capped', `Advance cannot exceed total amount ₹${total}`);
+                  } else {
+                    setOrderInfo({...orderInfo, advancePaid: v});
+                  }
+                }}
                 placeholderTextColor="#999"
               />
             </View>
@@ -684,6 +700,14 @@ export default function OrderDetails() {
           setSuccessModal({ visible: false, message: '' }); 
           router.dismissAll(); 
         }} 
+      />
+
+      <CustomAlert
+        visible={customAlert.visible}
+        type={customAlert.type}
+        title={customAlert.title}
+        message={customAlert.message}
+        onDismiss={dismissAlert}
       />
     </SafeAreaView>
   );

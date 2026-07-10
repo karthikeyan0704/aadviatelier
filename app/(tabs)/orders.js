@@ -17,6 +17,7 @@ import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { Search, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
+import { formatOrderId } from '../../utils/formatters';
 
 const TABS = ['Active', 'Past Due', 'Upcoming', 'Pending Amount', 'Delivered', 'Draft'];
 
@@ -115,11 +116,11 @@ export default function OrdersScreen() {
       style={styles.tableRow}
       onPress={() => router.push({ pathname: '/order-details', params: { id: item._id } })}
     >
-      <View style={[styles.rowCol, {flex: 1.2}]}>
+      <View style={[styles.rowCol, {flex: 1.1}]}>
         <Text style={styles.cellText} numberOfLines={1}>{item.customer?.name || 'Unknown'}</Text>
       </View>
-      <View style={[styles.rowCol, {flex: 1}]}>
-        <Text style={[styles.cellText, {textAlign: 'center'}]} numberOfLines={1}>{item.orderId?.split('-').pop() || item.orderId}</Text>
+      <View style={[styles.rowCol, {flex: 1.2}]}>
+        <Text style={[styles.cellText, {textAlign: 'center'}]} numberOfLines={1}>{formatOrderId(item.orderId)}</Text>
       </View>
       {!isStaff && (
       <View style={[styles.rowCol, {flex: 1, borderRightWidth: 0, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center'}]}>
@@ -140,7 +141,7 @@ export default function OrdersScreen() {
               <Search size={20} color={Colors.textSecondary} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search name, phone or ID..."
+                placeholder="Search name,phone or ID..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus
@@ -184,10 +185,10 @@ export default function OrdersScreen() {
       <View style={styles.tableCard}>
         {/* Blue Header Bar */}
         <View style={styles.tableHeaderBar}>
-          <View style={[styles.headerCol, {flex: 1.2}]}>
+          <View style={[styles.headerCol, {flex: 1.1}]}>
             <Text style={[styles.tableHeaderText, {textAlign: 'left'}]}>Customer Name</Text>
           </View>
-          <View style={[styles.headerCol, {flex: 1}]}>
+          <View style={[styles.headerCol, {flex: 1.2}]}>
             <Text style={[styles.tableHeaderText, {textAlign: 'center'}]}>Order No</Text>
           </View>
           {!isStaff && (
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
   },
   headerCol: {
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     justifyContent: 'center',
   },
   tableHeaderText: {
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
   },
   rowCol: {
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     justifyContent: 'center',
   },
   cellText: {

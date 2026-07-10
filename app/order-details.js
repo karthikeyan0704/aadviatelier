@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  ActivityIndicator, Alert, Linking, Image,
+  ActivityIndicator, Linking, Image,
   TextInput, Modal, RefreshControl, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,8 @@ import * as Sharing from 'expo-sharing';
 import { Audio } from 'expo-av';
 import SuccessModal from '../components/SuccessModal';
 import ConfirmModal from '../components/ConfirmModal';
+import CustomAlert from '../components/CustomAlert';
+import { formatOrderId } from '../utils/formatters';
 
 const STATUS_COLORS = {
   'Pending': { bg: '#FFF3E0', text: '#E65100', border: '#FFB74D' },
@@ -63,6 +65,12 @@ export default function OrderDetails() {
   const [audioPosition, setAudioPosition] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '', showCancel: false, onConfirm: null, confirmText: '', cancelText: 'Cancel' });
+
+  const showAlert = (type, title, message, opts = {}) => {
+    setCustomAlert({ visible: true, type, title, message, showCancel: opts.showCancel || false, onConfirm: opts.onConfirm || null, confirmText: opts.confirmText || '', cancelText: opts.cancelText || 'Cancel' });
+  };
+  const dismissAlert = () => setCustomAlert(prev => ({ ...prev, visible: false }));
 
   const formatTime = (millis) => {
     if (!millis) return '0:00';
@@ -129,7 +137,7 @@ export default function OrderDetails() {
       });
     } catch (err) {
       console.error('Failed to play audio', err);
-      Alert.alert('Error', 'Failed to play audio');
+      showAlert('error', 'Error', 'Failed to play audio');
     }
   };
   const fetchOrderDetails = async (isRefresh = false) => {
@@ -139,7 +147,7 @@ export default function OrderDetails() {
       setOrder(response.data);
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Failed to fetch order details");
+      showAlert('error', 'Error', 'Failed to fetch order details');
     } finally { 
       setLoading(false); 
       setRefreshing(false);
@@ -171,7 +179,7 @@ export default function OrderDetails() {
     if (step.status === 'Completed') return;
     
     if (step.step === 'Delivery' && order.billing?.paymentStatus !== 'Paid') {
-      Alert.alert('Payment Pending', 'Please record full payment before marking the order as Delivered.');
+      showAlert('warning', 'Payment Pending', 'Please record full payment before marking the order as Delivered.');
       return;
     }
     
@@ -189,13 +197,23 @@ export default function OrderDetails() {
       setOrder(res.data);
       setSuccessModal({ visible: true, title: 'Task Completed', message: `"${stepName}" has been marked as DONE!` });
     } catch (error) {
-      Alert.alert('Error', 'Failed to update workflow');
+      showAlert('error', 'Error', 'Failed to update workflow');
     } finally { setUpdatingStep(null); }
   };
 
   const handleRecordPayment = async () => {
     const amount = parseFloat(paymentAmount);
-    if (!amount || amount <= 0) { Alert.alert('Invalid', 'Enter a valid amount'); return; }
+    if (!amount || amount <= 0) { showAlert('warning', 'Invalid Amount', 'Please enter a valid payment amount.'); return; }
+
+    const balanceDue = order.billing?.balanceDue || 0;
+    if (balanceDue <= 0) {
+      showAlert('info', 'Fully Paid', 'This order is already fully paid. No more payments can be recorded.');
+      return;
+    }
+    if (amount > balanceDue) {
+      showAlert('warning', 'Amount Exceeds Balance', `The maximum payable amount is ₹${balanceDue.toLocaleString('en-IN')}. Please enter an amount equal to or less than the balance due.`);
+      return;
+    }
 
     const newTotal = (order.billing.totalPaid || 0) + amount;
     try {
@@ -205,9 +223,9 @@ export default function OrderDetails() {
       setOrder(res.data);
       setPaymentModalVisible(false);
       setPaymentAmount('');
-      Alert.alert('Success', `₹${amount} payment recorded!`);
+      showAlert('success', 'Payment Recorded', `₹${amount} has been recorded successfully!`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to record payment');
+      showAlert('error', 'Payment Failed', 'Failed to record payment. Please try again.');
     }
   };
 
@@ -220,30 +238,29 @@ export default function OrderDetails() {
       setEditBillModalVisible(false);
       setAdditionalCost('');
       setAdditionalDescription('');
-      Alert.alert('Success', 'Bill updated successfully');
+      showAlert('success', 'Bill Updated', 'The bill has been updated successfully!');
     } catch(e) {
-      Alert.alert('Error', 'Failed to update bill');
+      showAlert('error', 'Error', 'Failed to update the bill. Please try again.');
     }
   };
 
   const checkDeliveryPrompt = () => {
     if (!isEstimateInvoice && order.status !== 'Delivered') {
       setTimeout(() => {
-        Alert.alert(
-          "Update Status",
-          "Would you like to mark this order as Delivered now?",
-          [
-            { text: "No", style: "cancel" },
-            { text: "Yes, Mark Delivered", onPress: async () => {
-               try {
-                 const updateRes = await axios.put(`${API_ENDPOINTS.ORDERS}/${id}/status`, { status: 'Delivered' });
-                 setOrder(updateRes.data);
-               } catch(e) {
-                 Alert.alert('Error', 'Failed to update status');
-               }
-            }}
-          ]
-        );
+        showAlert('info', 'Update Status', 'Would you like to mark this order as Delivered now?', {
+          showCancel: true,
+          cancelText: 'No',
+          confirmText: 'Yes, Deliver',
+          onConfirm: async () => {
+            dismissAlert();
+            try {
+              const updateRes = await axios.put(`${API_ENDPOINTS.ORDERS}/${id}/status`, { status: 'Delivered' });
+              setOrder(updateRes.data);
+            } catch(e) {
+              showAlert('error', 'Error', 'Failed to update status');
+            }
+          }
+        });
       }, 1000);
     }
   };
@@ -256,7 +273,7 @@ export default function OrderDetails() {
       setInvoiceModalVisible(false);
       checkDeliveryPrompt();
     } catch {
-      Alert.alert('Error', 'Failed to generate invoice link');
+      showAlert('error', 'Error', 'Failed to generate invoice link');
     }
   };
 
@@ -280,7 +297,7 @@ export default function OrderDetails() {
       setSuccessModal({ visible: true, title: 'Assigned successfully!', message: 'The order has been assigned to the new master.' });
     } catch (e) {
       const errorMsg = e.response?.data?.message || e.response?.data?.error || e.message || 'Failed to assign order';
-      Alert.alert('Assignment Failed', errorMsg);
+      showAlert('error', 'Assignment Failed', errorMsg);
     }
   };
 
@@ -318,9 +335,10 @@ export default function OrderDetails() {
             </div>
             
             <div class="row">
-              <div><span class="label">Order ID:</span> ${order.orderId ? order.orderId.split('-').pop() : ''}</div>
+              <div><span class="label">Order ID:</span> ${formatOrderId(order.orderId)}</div>
               <div><span class="label">Date:</span> ${date}</div>
             </div>
+            
             <div class="row">
               <div><span class="label">Customer:</span> ${order.customer?.name}</div>
               <div><span class="label">Phone:</span> ${order.customer?.mobileNumber}</div>
@@ -360,7 +378,7 @@ export default function OrderDetails() {
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
     } catch (e) {
-      Alert.alert('Error', 'Failed to generate PDF');
+      showAlert('error', 'Error', 'Failed to generate PDF');
     }
   };
 
@@ -384,7 +402,7 @@ export default function OrderDetails() {
         onDone: () => router.back()
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to delete order');
+      showAlert('error', 'Error', 'Failed to delete order');
     }
   };
 
@@ -461,7 +479,8 @@ export default function OrderDetails() {
         {/* Order Info Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Order Info</Text>
-          <InfoRow label="Order ID" value={order.orderId ? order.orderId.split('-').pop() : ''} />
+          <InfoRow label="Order ID" value={formatOrderId(order.orderId)} />
+          <InfoRow label="Due Date" value={new Date(order.deliveryDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} />
           {order.createdBy && <InfoRow label="Created By" value={`${order.createdBy.name} (${order.createdBy.role === 'owner' ? 'Owner' : 'Admin'})`} />}
           <InfoRow label="Category" value={order.category} />
           <InfoRow label="Dress Type" value={order.dressType} />
@@ -547,9 +566,19 @@ export default function OrderDetails() {
           
           {(user?.role === 'owner' || user?.role === 'admin') && (
             <View style={{flexDirection: 'row', gap: Spacing.sm}}>
-              <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1}]} onPress={() => setPaymentModalVisible(true)}>
+              <TouchableOpacity 
+                style={[styles.recordPaymentBtn, {flex: 1}, order.billing?.paymentStatus === 'Paid' && {opacity: 0.5}]} 
+                onPress={() => {
+                  if (order.billing?.paymentStatus === 'Paid') {
+                    showAlert('info', 'Fully Paid', 'This order is already fully paid.');
+                    return;
+                  }
+                  setPaymentModalVisible(true);
+                }}
+                disabled={order.billing?.paymentStatus === 'Paid'}
+              >
                 <CreditCard size={18} color={Colors.white} />
-                <Text style={styles.recordPaymentText}>Record Pay</Text>
+                <Text style={styles.recordPaymentText}>{order.billing?.paymentStatus === 'Paid' ? 'Fully Paid' : 'Record Pay'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: Colors.secondary}]} onPress={() => setEditBillModalVisible(true)}>
                 <Edit3 size={18} color={Colors.white} />
@@ -689,10 +718,19 @@ export default function OrderDetails() {
             <Text style={styles.modalSubtitle}>Balance Due: ₹{(order.billing?.balanceDue || 0).toLocaleString('en-IN')}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter amount"
+              placeholder={`Enter amount (max ₹${(order.billing?.balanceDue || 0).toLocaleString('en-IN')})`}
               keyboardType="numeric"
               value={paymentAmount}
-              onChangeText={setPaymentAmount}
+              onChangeText={(val) => {
+                const num = parseFloat(val);
+                const balance = order.billing?.balanceDue || 0;
+                if (!isNaN(num) && num > balance) {
+                  setPaymentAmount(String(balance));
+                  showAlert('warning', 'Amount Capped', `Maximum payable amount is ₹${balance.toLocaleString('en-IN')}`);
+                } else {
+                  setPaymentAmount(val);
+                }
+              }}
               autoFocus
               placeholderTextColor="#999"
             />
@@ -858,16 +896,43 @@ export default function OrderDetails() {
           if (customOnDone) customOnDone();
         }} 
       />
+
+      <CustomAlert
+        visible={customAlert.visible}
+        type={customAlert.type}
+        title={customAlert.title}
+        message={customAlert.message}
+        showCancel={customAlert.showCancel}
+        confirmText={customAlert.confirmText}
+        cancelText={customAlert.cancelText}
+        onConfirm={customAlert.onConfirm}
+        onDismiss={dismissAlert}
+      />
     </SafeAreaView>
   );
 }
 
-const InfoRow = ({ label, value, highlight }) => (
-  <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={[styles.infoValue, highlight && {color: Colors.secondary, fontWeight: 'bold'}]}>{value}</Text>
-  </View>
-);
+const InfoRow = ({ label, value, highlight }) => {
+  const isLongText = typeof value === 'string' && value.length > 25;
+  
+  if (isLongText) {
+    return (
+      <View style={[styles.infoRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+        <Text style={[styles.infoLabel, { marginBottom: 6 }]}>{label}</Text>
+        <Text style={[styles.infoValue, { maxWidth: '100%', textAlign: 'left', lineHeight: 22 }, highlight && {color: Colors.secondary, fontWeight: 'bold'}]}>
+          {value}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, highlight && {color: Colors.secondary, fontWeight: 'bold'}]}>{value}</Text>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },

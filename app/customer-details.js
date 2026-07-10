@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { formatOrderId } from '../utils/formatters';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
@@ -268,7 +269,7 @@ export default function CustomerDetails() {
                           <User size={14} color={Colors.textSecondary} />
                           <Text style={styles.detailedOrderName}>{customer.name}</Text>
                        </View>
-                       <Text style={styles.detailedOrderNo}>Order No: #{order.orderId ? order.orderId.split('-').pop() : order._id.substring(order._id.length - 4)}</Text>
+                       <Text style={styles.detailedOrderNo}>Order No: #{formatOrderId(order.orderId) || order._id.substring(order._id.length - 4)}</Text>
                        
                        <View style={styles.detailedOrderDressType}>
                          <Text style={{fontSize: 14}}>{getDressIcon(order.dressType)}</Text> 
