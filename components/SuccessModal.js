@@ -3,7 +3,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CheckCircle } from 'lucide-react-native';
 import { Colors, Spacing, Shadows } from '../constants/theme';
 
-export default function SuccessModal({ visible, title, message, onDone }) {
+export default function SuccessModal({ visible, title, message, onDone, secondaryText, onSecondaryAction, secondaryIcon, tertiaryText, onTertiaryAction, tertiaryIcon }) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
@@ -13,6 +13,18 @@ export default function SuccessModal({ visible, title, message, onDone }) {
           </View>
           <Text style={styles.title}>{title || 'Success!'}</Text>
           <Text style={styles.message}>{message}</Text>
+          {onSecondaryAction && (
+            <TouchableOpacity style={styles.secondaryButton} onPress={onSecondaryAction}>
+              {secondaryIcon}
+              <Text style={styles.secondaryButtonText}>{secondaryText}</Text>
+            </TouchableOpacity>
+          )}
+          {onTertiaryAction && (
+            <TouchableOpacity style={styles.tertiaryButton} onPress={onTertiaryAction}>
+              {tertiaryIcon}
+              <Text style={styles.tertiaryButtonText}>{tertiaryText}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.button} onPress={onDone}>
             <Text style={styles.buttonText}>Done</Text>
           </TouchableOpacity>
@@ -29,5 +41,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: 'bold', color: Colors.text, marginBottom: 8, textAlign: 'center' },
   message: { fontSize: 16, color: Colors.textSecondary, marginBottom: Spacing.xl, textAlign: 'center', lineHeight: 22 },
   button: { width: '100%', height: 56, backgroundColor: Colors.primary, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  buttonText: { color: Colors.white, fontSize: 18, fontWeight: 'bold' }
+  buttonText: { color: Colors.white, fontSize: 18, fontWeight: 'bold' },
+  secondaryButton: { width: '100%', height: 56, backgroundColor: '#25D366', borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 12, flexDirection: 'row', gap: 8 },
+  secondaryButtonText: { color: Colors.white, fontSize: 16, fontWeight: 'bold' },
+  tertiaryButton: { width: '100%', height: 56, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.primary, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 12, flexDirection: 'row', gap: 8 },
+  tertiaryButtonText: { color: Colors.primary, fontSize: 16, fontWeight: 'bold' }
 });

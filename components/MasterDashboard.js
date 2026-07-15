@@ -16,7 +16,7 @@ import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, Clock, Scissors, FileText, Sparkles, User, LogOut, AlertTriangle } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import ConfirmModal from './ConfirmModal';
 import SuccessModal from './SuccessModal';
 
@@ -43,7 +43,11 @@ export default function MasterDashboard() {
     }
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

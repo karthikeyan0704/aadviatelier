@@ -66,6 +66,8 @@ export default function OrderDetails() {
   const [audioDuration, setAudioDuration] = useState(0);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '', showCancel: false, onConfirm: null, confirmText: '', cancelText: 'Cancel' });
+  const [imageViewerModalVisible, setImageViewerModalVisible] = useState(false);
+  const [currentImageViewUrl, setCurrentImageViewUrl] = useState('');
 
   const showAlert = (type, title, message, opts = {}) => {
     setCustomAlert({ visible: true, type, title, message, showCancel: opts.showCancel || false, onConfirm: opts.onConfirm || null, confirmText: opts.confirmText || '', cancelText: opts.cancelText || 'Cancel' });
@@ -309,6 +311,18 @@ export default function OrderDetails() {
       const balanceDue = order.billing?.balanceDue || 0;
       const date = new Date().toLocaleDateString('en-GB');
       
+      let extraChargesHtml = '';
+      if (order.extraCharges && order.extraCharges.length > 0) {
+        extraChargesHtml = order.extraCharges.map(ec => `
+          <tr>
+            <td>Extra Charge: ${ec.description || 'Additional Work'}</td>
+            <td>-</td>
+            <td>-</td>
+            <td style="text-align: right;">₹${ec.amount}</td>
+          </tr>
+        `).join('');
+      }
+      
       const html = `
         <html>
           <head>
@@ -330,7 +344,7 @@ export default function OrderDetails() {
           </head>
           <body>
             <div class="header">
-              <h1>Aadvi Atelier</h1>
+              <h1>Aadvi Designer Studio</h1>
               <div class="title">${title}</div>
             </div>
             
@@ -348,16 +362,19 @@ export default function OrderDetails() {
               <thead>
                 <tr>
                   <th>Description</th>
-                  <th>Type</th>
                   <th>Qty</th>
+                  <th>Rate</th>
+                  <th style="text-align: right;">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>${order.category} - ${order.dressType}<br/><small style="color: #777">${(order.specialInstructions || '').replace(/\n/g, '<br/>')}</small></td>
-                  <td>${order.type}</td>
                   <td>${order.quantity || 1}</td>
+                  <td>₹${order.stitchingPrice || 0}</td>
+                  <td style="text-align: right;">₹${(order.stitchingPrice || 0) * (order.quantity || 1)}</td>
                 </tr>
+                ${extraChargesHtml}
               </tbody>
             </table>
             
@@ -368,7 +385,7 @@ export default function OrderDetails() {
             </div>
             
             <div class="footer">
-              Thank you for choosing Aadvi Atelier!<br/>
+              Thank you for choosing Aadvi Designer Studio!<br/>
               For queries, please contact us.
             </div>
           </body>
@@ -530,11 +547,37 @@ export default function OrderDetails() {
           </View>
         </View>
 
-        {/* Reference Image */}
-        {order.referenceImage && (
+        {/* Reference Images */}
+        {(order.referenceImages?.length > 0 || order.referenceImage) && (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Reference Image</Text>
-            <Image source={{uri: order.referenceImage}} style={styles.refImage} resizeMode="cover" />
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
+              <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Reference Image{order.referenceImages?.length > 1 ? 's' : ''}</Text>
+              <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
+              {(order.referenceImages?.length > 0 ? order.referenceImages : [order.referenceImage]).map((imgUri, idx) => (
+                <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
+                  <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Sample Dress Photos */}
+        {(order.sampleDressPhotos?.length > 0 || order.sampleDressPhoto) && (
+          <View style={styles.card}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
+              <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Sample Dress Photo{order.sampleDressPhotos?.length > 1 ? 's' : ''}</Text>
+              <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
+              {(order.sampleDressPhotos?.length > 0 ? order.sampleDressPhotos : [order.sampleDressPhoto]).map((imgUri, idx) => (
+                <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
+                  <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -722,13 +765,14 @@ export default function OrderDetails() {
               keyboardType="numeric"
               value={paymentAmount}
               onChangeText={(val) => {
-                const num = parseFloat(val);
+                const cleaned = val.replace(/[^0-9.]/g, '');
+                const num = parseFloat(cleaned);
                 const balance = order.billing?.balanceDue || 0;
                 if (!isNaN(num) && num > balance) {
                   setPaymentAmount(String(balance));
                   showAlert('warning', 'Amount Capped', `Maximum payable amount is ₹${balance.toLocaleString('en-IN')}`);
                 } else {
-                  setPaymentAmount(val);
+                  setPaymentAmount(cleaned);
                 }
               }}
               autoFocus
@@ -757,7 +801,7 @@ export default function OrderDetails() {
               placeholder="Extra Amount (₹)"
               keyboardType="numeric"
               value={additionalCost}
-              onChangeText={setAdditionalCost}
+              onChangeText={(v) => setAdditionalCost(v.replace(/[^0-9.]/g, ''))}
               placeholderTextColor="#999"
             />
             <TextInput
@@ -908,6 +952,18 @@ export default function OrderDetails() {
         onConfirm={customAlert.onConfirm}
         onDismiss={dismissAlert}
       />
+      <Modal visible={imageViewerModalVisible} transparent={true} animationType="fade" onRequestClose={() => setImageViewerModalVisible(false)}>
+        <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center'}}>
+          <TouchableOpacity 
+            style={{position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 30}} 
+            onPress={() => setImageViewerModalVisible(false)}
+          >
+            <X size={28} color="white" />
+          </TouchableOpacity>
+          <Image source={{uri: currentImageViewUrl}} style={{width: '100%', height: '80%'}} resizeMode="contain" />
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }

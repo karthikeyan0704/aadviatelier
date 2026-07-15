@@ -14,7 +14,7 @@ import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { Scissors, CheckCircle, Clock, User } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 
 export default function StaffDashboard() {
@@ -36,9 +36,11 @@ export default function StaffDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

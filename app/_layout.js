@@ -1,6 +1,7 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { CartProvider } from '../context/CartContext';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -139,13 +140,15 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <RootLayoutNav />
-      <GlobalStatusBarBackground />
-      <StatusBar 
-        style={isDarkMode ? 'light' : 'dark'} 
-        backgroundColor="transparent"
-        translucent={true}
-      />
+      <CartProvider>
+        <RootLayoutNav />
+        <GlobalStatusBarBackground />
+        <StatusBar 
+          style={isDarkMode ? 'light' : 'dark'} 
+          backgroundColor="transparent"
+          translucent={true}
+        />
+      </CartProvider>
     </AuthProvider>
   );
 }

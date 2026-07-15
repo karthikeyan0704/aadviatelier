@@ -15,7 +15,7 @@ import axios from 'axios';
 import { API_ENDPOINTS } from '../../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { Search, UserPlus, Trash2, Phone, ChevronRight } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import SuccessModal from '../../components/SuccessModal';
@@ -47,9 +47,11 @@ export default function CustomersScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchCustomers();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

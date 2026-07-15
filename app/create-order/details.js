@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Camera, Save, Mic, Plus, Minus, Square, Play, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Camera, Save, Mic, Plus, Minus, Square, Play, Trash2, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import axios from 'axios';
@@ -23,10 +24,13 @@ import { API_ENDPOINTS } from '../../constants/ApiConfig';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SuccessModal from '../../components/SuccessModal';
 import CustomAlert from '../../components/CustomAlert';
+import { useCart } from '../../context/CartContext';
 
 export default function OrderDetails() {
   const router = useRouter();
-  const { customerId, category, dressType } = useLocalSearchParams();
+  const { customerId, category, dressType, editIndex } = useLocalSearchParams();
+  const inputRefs = useRef({});
+  const { addToCart, updateCart, cart, setCustomerId: setGlobalCustomerId } = useCart();
   
   const [measurements, setMeasurements] = useState({});
   const [orderInfo, setOrderInfo] = useState({ 
@@ -38,11 +42,12 @@ export default function OrderDetails() {
     isAariWork: false,
     quantity: 1,
     stitchingPrice: '',
-    advancePaid: ''
+    extraCharge: '',
+    extraChargeReason: ''
   });
   
-  const [refImage, setRefImage] = useState(null);
-  const [sampleDressImage, setSampleDressImage] = useState(null);
+  const [refImages, setRefImages] = useState([]);
+  const [sampleDressImages, setSampleDressImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [existingMeasurements, setExistingMeasurements] = useState(null);
   const [useExisting, setUseExisting] = useState(false);
@@ -51,6 +56,7 @@ export default function OrderDetails() {
   const [assignedTo, setAssignedTo] = useState({ cuttingMaster: null, stitchingMaster: null });
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
   const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '' });
+  const [previewModal, setPreviewModal] = useState({ visible: false, imageUri: null, title: '' });
 
   const showAlert = (type, title, message) => {
     setCustomAlert({ visible: true, type, title, message });
@@ -168,7 +174,18 @@ export default function OrderDetails() {
     useEffect(() => {
       if (customerId) fetchCustomerMeasurements();
       fetchStaff();
-    }, [customerId]);
+
+      if (editIndex !== undefined && cart[Number(editIndex)]) {
+        const item = cart[Number(editIndex)];
+        setOrderInfo(item.orderInfo);
+        setMeasurements(item.measurements);
+        setRefImages(item.refImages || (item.refImage ? [item.refImage] : []));
+        setSampleDressImages(item.sampleDressImages || (item.sampleDressImage ? [item.sampleDressImage] : []));
+        setAudioUri(item.audioUri);
+        setAssignedTo(item.assignedTo);
+        setUseExisting(item.useExisting);
+      }
+    }, [customerId, editIndex]);
 
   const fetchStaff = async () => {
     try {
@@ -206,29 +223,35 @@ export default function OrderDetails() {
   const pickImage = async (type) => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsMultipleSelection: true,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      if (type === 'ref') setRefImage(result.assets[0]);
-      else setSampleDressImage(result.assets[0]);
+      if (type === 'ref') {
+        setRefImages(prev => [...prev, ...result.assets]);
+      } else {
+        setSampleDressImages(prev => [...prev, ...result.assets]);
+      }
     }
+  };
+
+  const removeRefImage = (index) => {
+    setRefImages(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const removeSampleImage = (index) => {
+    setSampleDressImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const calculateTotal = () => {
     const qty = parseInt(orderInfo.quantity) || 1;
     const price = parseFloat(orderInfo.stitchingPrice) || 0;
-    return qty * price;
+    const extra = parseFloat(orderInfo.extraCharge) || 0;
+    return (qty * price) + extra;
   };
 
-  const calculateBalance = () => {
-    const total = calculateTotal();
-    const advance = parseFloat(orderInfo.advancePaid) || 0;
-    return Math.max(total - advance, 0);
-  };
-
-  const handleSubmit = async () => {
+  const handleAddToCart = (action) => {
     if (!orderInfo.deliveryDate) {
       showAlert('warning', 'Missing Info', 'Please provide a Delivery Date');
       return;
@@ -248,100 +271,33 @@ export default function OrderDetails() {
         return;
       }
     }
-
-    setLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('customerId', customerId);
-      formData.append('category', category);
-      formData.append('dressType', dressType);
-      formData.append('type', orderInfo.type);
-      formData.append('specialInstructions', orderInfo.specialInstructions);
-      formData.append('deliveryDate', parsedDeliveryDate.toISOString());
-      
-      if (parsedTrialDate) {
-        formData.append('trialDate', parsedTrialDate.toISOString());
-      }
-      
-      formData.append('priority', orderInfo.priority);
-      formData.append('isAariWork', String(orderInfo.isAariWork));
-      formData.append('quantity', orderInfo.quantity.toString());
-      formData.append('stitchingPrice', orderInfo.stitchingPrice || '0');
-      
-      formData.append('measurements', JSON.stringify({ ...measurements, dressType }));
-      if (assignedTo.cuttingMaster || assignedTo.stitchingMaster) {
-        formData.append('assignedTo', JSON.stringify(assignedTo));
-      }
-      
-      formData.append('billing', JSON.stringify({
-        estimatedCost: calculateTotal(),
-        advancePaid: Number(orderInfo.advancePaid || 0)
-      }));
-
-      if (refImage) {
-        formData.append('referenceImage', {
-          uri: refImage.uri,
-          type: 'image/jpeg',
-          name: 'ref_image.jpg',
-        });
-      }
-
-      if (sampleDressImage) {
-        formData.append('sampleDressPhoto', {
-          uri: sampleDressImage.uri,
-          type: 'image/jpeg',
-          name: 'sample_dress.jpg',
-        });
-      }
-
-      if (audioUri) {
-        const uriParts = audioUri.split('.');
-        const fileType = uriParts[uriParts.length - 1]; // e.g. "m4a", "caf", "3gp", "mp4"
-        formData.append('audioInstruction', {
-          uri: audioUri,
-          type: `audio/${fileType}`,
-          name: `audio_instruction.${fileType}`,
-        });
-      }
-
-      await axios.post(API_ENDPOINTS.ORDERS, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      if (!useExisting && Object.keys(measurements).length > 0) {
-        try {
-          const res = await axios.get(`${API_ENDPOINTS.CUSTOMERS}/${customerId}`);
-          const cust = res.data.customer;
-          let currentArray = cust?.measurements?.[dressType] || [];
-          if (!Array.isArray(currentArray)) {
-            currentArray = Object.keys(currentArray).length > 0 
-              ? [{ id: Date.now().toString(), title: 'Legacy Measurement', date: new Date().toISOString(), details: currentArray }]
-              : [];
-          }
-          
-          currentArray.unshift({
-            id: Date.now().toString(),
-            title: `Order Measurement`,
-            date: new Date().toISOString(),
-            details: measurements
-          });
-
-          await axios.put(`${API_ENDPOINTS.CUSTOMERS}/${customerId}/measurements`, {
-            outfitName: dressType,
-            measurements: currentArray
-          });
-        } catch (err) {
-          console.log('Failed to update customer measurements', err);
-        }
-      }
-
-      setSuccessModal({ visible: true, message: 'Order created successfully!' });
-    } catch (error) {
-      console.error('Submit Error:', error.response?.data || error.message || error);
-      const errMsg = error.response?.data?.message || error.message || 'Failed to create order';
-      showAlert('error', 'Order Failed', errMsg);
-    } finally {
-      setLoading(false);
+    
+    setGlobalCustomerId(customerId);
+    
+    const cartItem = {
+      category,
+      dressType,
+      orderInfo,
+      measurements,
+      refImages,
+      sampleDressImages,
+      audioUri,
+      assignedTo,
+      customerId,
+      useExisting,
+      total: calculateTotal()
+    };
+    
+    if (editIndex !== undefined) {
+      updateCart(Number(editIndex), cartItem);
+    } else {
+      addToCart(cartItem);
+    }
+    
+    if (action === 'checkout') {
+      router.push('/create-order/checkout');
+    } else {
+      router.back();
     }
   };
 
@@ -376,18 +332,27 @@ export default function OrderDetails() {
 
     const renderGrid = () => (
       <View style={styles.grid}>
-        {fields.map((f) => {
+        {fields.map((f, index) => {
           const key = f.toLowerCase().replace(' ', '');
           return (
             <View key={f} style={styles.gridItem}>
               <Text style={styles.inputLabel}>{f}</Text>
               <TextInput
+                ref={(el) => (inputRefs.current[key] = el)}
                 style={styles.gridInput}
                 placeholder="0.0"
                 keyboardType="numeric"
                 value={measurements[key] || ''}
                 onChangeText={(val) => setMeasurements({ ...measurements, [key]: val })}
                 placeholderTextColor="#999"
+                returnKeyType={index === fields.length - 1 ? "done" : "next"}
+                onSubmitEditing={() => {
+                  if (index < fields.length - 1) {
+                    const nextKey = fields[index + 1].toLowerCase().replace(' ', '');
+                    inputRefs.current[nextKey]?.focus();
+                  }
+                }}
+                blurOnSubmit={index === fields.length - 1}
               />
             </View>
           );
@@ -516,23 +481,62 @@ export default function OrderDetails() {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Upload Images</Text>
-            <View style={styles.photoGrid}>
-              <TouchableOpacity style={styles.photoButton} onPress={() => pickImage('ref')}>
-                {refImage ? <Image source={{ uri: refImage.uri }} style={styles.previewImage} /> : (
-                  <>
-                    <Camera size={24} color={Colors.textSecondary} />
-                    <Text style={styles.photoText}>Inspiration</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.photoButton} onPress={() => pickImage('sample')}>
-                {sampleDressImage ? <Image source={{ uri: sampleDressImage.uri }} style={styles.previewImage} /> : (
-                  <>
-                    <Camera size={24} color={Colors.textSecondary} />
-                    <Text style={styles.photoText}>Sample</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            <View style={{flexDirection: 'column', gap: Spacing.lg}}>
+              
+              <View>
+                <Text style={{fontSize: 12, color: Colors.textSecondary, marginBottom: 8, fontWeight: '500'}}>Reference Images / Inspiration</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10, paddingRight: 20}}>
+                  {refImages.map((img, idx) => (
+                    <View key={idx} style={[styles.photoButton, {flex: 0, borderWidth: 0, backgroundColor: 'transparent', width: 100, height: 100}]}>
+                      <View style={styles.imageContainer}>
+                        <TouchableOpacity style={{ flex: 1 }} onPress={() => setPreviewModal({ visible: true, imageUri: img.uri, title: `Inspiration ${idx+1}` })}>
+                          <Image source={{ uri: img.uri }} style={styles.previewImage} />
+                          <View style={styles.tapToViewOverlay}>
+                            <Text style={styles.tapToViewText}>Tap to view</Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.editImageBtn} onPress={() => removeRefImage(idx)}>
+                          <X size={14} color={Colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={[styles.photoButton, {flex: 0, width: 100, height: 100}]}>
+                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => pickImage('ref')}>
+                      <Camera size={24} color={Colors.textSecondary} />
+                      <Text style={styles.photoText}>{refImages.length > 0 ? "Add More" : "Add Image"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+              
+              <View>
+                <Text style={{fontSize: 12, color: Colors.textSecondary, marginBottom: 8, fontWeight: '500'}}>Sample Dress Photo</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10, paddingRight: 20}}>
+                  {sampleDressImages.map((img, idx) => (
+                    <View key={idx} style={[styles.photoButton, {flex: 0, borderWidth: 0, backgroundColor: 'transparent', width: 100, height: 100}]}>
+                      <View style={styles.imageContainer}>
+                        <TouchableOpacity style={{ flex: 1 }} onPress={() => setPreviewModal({ visible: true, imageUri: img.uri, title: `Sample Dress ${idx+1}` })}>
+                          <Image source={{ uri: img.uri }} style={styles.previewImage} />
+                          <View style={styles.tapToViewOverlay}>
+                            <Text style={styles.tapToViewText}>Tap to view</Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.editImageBtn} onPress={() => removeSampleImage(idx)}>
+                          <X size={14} color={Colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={[styles.photoButton, {flex: 0, width: 100, height: 100}]}>
+                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => pickImage('sample')}>
+                      <Camera size={24} color={Colors.textSecondary} />
+                      <Text style={styles.photoText}>{sampleDressImages.length > 0 ? "Add More" : "Add Image"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+
             </View>
           </View>
 
@@ -634,12 +638,45 @@ export default function OrderDetails() {
                 <Text style={{fontSize: 10, color: Colors.textSecondary}}>(Price/Qty)</Text>
               </View>
               <TextInput 
+                ref={(el) => (inputRefs.current['stitchingPrice'] = el)}
                 style={styles.priceInput} 
                 placeholder="0" 
                 keyboardType="numeric" 
                 value={orderInfo.stitchingPrice}
-                onChangeText={(v) => setOrderInfo({...orderInfo, stitchingPrice: v})}
+                onChangeText={(v) => setOrderInfo({...orderInfo, stitchingPrice: v.replace(/[^0-9.]/g, '')})}
                 placeholderTextColor="#999"
+                returnKeyType="next"
+                onSubmitEditing={() => inputRefs.current['extraCharge']?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Extra Charge (Optional)</Text>
+              <TextInput 
+                ref={(el) => (inputRefs.current['extraCharge'] = el)}
+                style={styles.priceInput} 
+                placeholder="0" 
+                keyboardType="numeric" 
+                value={orderInfo.extraCharge}
+                onChangeText={(v) => setOrderInfo({...orderInfo, extraCharge: v.replace(/[^0-9.]/g, '')})}
+                placeholderTextColor="#999"
+                returnKeyType="next"
+                onSubmitEditing={() => inputRefs.current['extraChargeReason']?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Extra Charge Reason</Text>
+              <TextInput 
+                ref={(el) => (inputRefs.current['extraChargeReason'] = el)}
+                style={[styles.priceInput, { width: 140 }]} 
+                placeholder="e.g. Urgent, Aari" 
+                value={orderInfo.extraChargeReason}
+                onChangeText={(v) => setOrderInfo({...orderInfo, extraChargeReason: v})}
+                placeholderTextColor="#999"
+                returnKeyType="next"
+                onSubmitEditing={() => inputRefs.current['advancePaid']?.focus()}
+                blurOnSubmit={false}
               />
             </View>
           </View>
@@ -649,47 +686,30 @@ export default function OrderDetails() {
             <Text style={styles.sectionTitle}>Price Breakup</Text>
             <View style={styles.breakupRow}>
               <Text style={styles.breakupText}>Stitching Price</Text>
-              <Text style={styles.breakupText}>{orderInfo.quantity} × ₹ {orderInfo.stitchingPrice || 0} = ₹ {calculateTotal()}</Text>
+              <Text style={styles.breakupText}>{orderInfo.quantity} × ₹ {orderInfo.stitchingPrice || 0}</Text>
             </View>
+            {parseFloat(orderInfo.extraCharge) > 0 && (
+              <View style={[styles.breakupRow, {marginTop: 4}]}>
+                <Text style={styles.breakupText}>Extra ({orderInfo.extraChargeReason || 'Other'})</Text>
+                <Text style={styles.breakupText}>₹ {orderInfo.extraCharge}</Text>
+              </View>
+            )}
             <View style={[styles.breakupRow, {marginTop: 8, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingBottom: 12}]}>
               <Text style={[styles.breakupText, {fontWeight: 'bold'}]}>Total:</Text>
               <Text style={[styles.breakupText, {fontWeight: 'bold', color: Colors.primary}]}>₹ {calculateTotal()}</Text>
             </View>
-
-            <View style={[styles.breakupRow, {marginTop: 12}]}>
-              <Text style={styles.breakupText}>Advance Amount</Text>
-              <TextInput 
-                style={[styles.priceInput, {width: 80, height: 30}]} 
-                placeholder="0" 
-                keyboardType="numeric" 
-                value={orderInfo.advancePaid}
-                onChangeText={(v) => {
-                  const total = calculateTotal();
-                  const num = parseFloat(v);
-                  if (!isNaN(num) && total > 0 && num > total) {
-                    setOrderInfo({...orderInfo, advancePaid: String(total)});
-                    showAlert('warning', 'Amount Capped', `Advance cannot exceed total amount ₹${total}`);
-                  } else {
-                    setOrderInfo({...orderInfo, advancePaid: v});
-                  }
-                }}
-                placeholderTextColor="#999"
-              />
-            </View>
-            <View style={[styles.breakupRow, {marginTop: 8}]}>
-              <Text style={[styles.breakupText, {fontWeight: 'bold'}]}>Balance Due</Text>
-              <Text style={[styles.breakupText, {fontWeight: 'bold', color: Colors.error}]}>₹ {calculateBalance()}</Text>
-            </View>
           </View>
 
-          <TouchableOpacity style={[styles.submitButton, loading && styles.disabled]} onPress={handleSubmit} disabled={loading}>
-            {loading ? <ActivityIndicator color={Colors.white} /> : (
-              <>
-                <Text style={styles.submitText}>Save Order</Text>
-                <ArrowLeft style={{transform: [{rotate: '180deg'}]}} size={20} color={Colors.white} />
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={{flexDirection: 'row', gap: 10, marginTop: Spacing.lg}}>
+            <TouchableOpacity style={[styles.submitButton, {flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.primary}]} onPress={() => handleAddToCart('back')}>
+              <Text style={[styles.submitText, {color: Colors.primary, fontSize: 13, marginRight: 0, textAlign: 'center'}]}>Add & Choose Another</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.submitButton, {flex: 1}]} onPress={() => handleAddToCart('checkout')}>
+              <Text style={styles.submitText}>Checkout</Text>
+              <ArrowLeft style={{transform: [{rotate: '180deg'}]}} size={20} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -701,6 +721,21 @@ export default function OrderDetails() {
           router.dismissAll(); 
         }} 
       />
+
+      <Modal visible={previewModal.visible} transparent={true} animationType="fade" onRequestClose={() => setPreviewModal({ visible: false, imageUri: null, title: '' })}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 }} 
+            onPress={() => setPreviewModal({ visible: false, imageUri: null, title: '' })}
+          >
+            <X size={24} color="white" />
+          </TouchableOpacity>
+          {previewModal.imageUri && (
+            <Image source={{ uri: previewModal.imageUri }} style={{ width: '100%', height: '80%', resizeMode: 'contain' }} />
+          )}
+          <Text style={{ color: 'white', fontSize: 16, marginTop: 10 }}>{previewModal.title}</Text>
+        </View>
+      </Modal>
 
       <CustomAlert
         visible={customAlert.visible}
@@ -750,9 +785,14 @@ const styles = StyleSheet.create({
   gridInput: { borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, paddingVertical: 6, paddingHorizontal: 8, fontSize: 14 },
   
   photoGrid: { flexDirection: 'row', gap: Spacing.md },
-  photoButton: { flex: 1, height: 100, borderStyle: 'dashed', borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },
+  photoButton: { flex: 1, height: 100, borderStyle: 'dashed', borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, backgroundColor: '#FAFAFA' },
   previewImage: { width: '100%', height: '100%', borderRadius: BorderRadius.md },
   photoText: { fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
+  imageContainer: { width: '100%', height: '100%', borderRadius: BorderRadius.md, overflow: 'hidden', backgroundColor: '#000' },
+  tapToViewOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', paddingVertical: 4, alignItems: 'center' },
+  tapToViewText: { color: 'white', fontSize: 10, fontWeight: '600' },
+  editImageBtn: { position: 'absolute', top: 5, right: 5, backgroundColor: 'white', borderRadius: 12, padding: 6, ...Shadows.sm },
+  emptyPhotoBtn: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
   
   row: { flexDirection: 'row', gap: Spacing.md },
   alignCenter: { alignItems: 'center', justifyContent: 'space-between' },

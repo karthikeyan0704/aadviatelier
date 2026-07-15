@@ -23,7 +23,7 @@ import {
   Plus,
   User
 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import StaffDashboard from '../../components/StaffDashboard';
 import MasterDashboard from '../../components/MasterDashboard';
@@ -50,9 +50,11 @@ function OwnerDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
