@@ -302,7 +302,8 @@ export default function Checkout() {
       
       const { uri } = await Print.printToFileAsync({ html });
       const safeName = customer.name ? customer.name.replace(/[^a-z0-9]/gi, '_') : 'Customer';
-      const newPath = `${FileSystem.documentDirectory}Aadvi_Master_Bill_${safeName}.pdf`;
+      const timestamp = new Date().getTime();
+      const newPath = `${FileSystem.documentDirectory}Aadvi_Master_Bill_${safeName}_${timestamp}.pdf`;
       await FileSystem.moveAsync({ from: uri, to: newPath });
       await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
     } catch (e) {
