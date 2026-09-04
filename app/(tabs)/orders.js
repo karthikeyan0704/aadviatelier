@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatOrderId } from '../../utils/formatters';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 
 const TABS = ['Active', 'Past Due', 'Upcoming', 'Pending Amount', 'Delivered', 'Draft'];
 
@@ -233,7 +234,10 @@ export default function OrdersScreen() {
       `;
       
       const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
+      const safeName = customer?.name ? customer.name.replace(/[^a-z0-9]/gi, '_') : 'Customer';
+      const newPath = `${FileSystem.documentDirectory}Aadvi_Master_Bill_${safeName}.pdf`;
+      await FileSystem.moveAsync({ from: uri, to: newPath });
+      await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
     } catch (e) {
       console.log(e);
       Alert.alert('Error', 'Failed to generate PDF');
