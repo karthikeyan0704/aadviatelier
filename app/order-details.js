@@ -17,7 +17,6 @@ import {
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import SuccessModal from '../components/SuccessModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -418,12 +417,7 @@ export default function OrderDetails() {
       `;
       
       const { uri } = await Print.printToFileAsync({ html });
-      const billType = isEstimate ? 'Estimate_Bill' : 'Final_Bill';
-      const safeId = order.orderId ? order.orderId.replace(/[^a-z0-9]/gi, '_') : 'Order';
-      const timestamp = new Date().getTime();
-      const newPath = `${FileSystem.documentDirectory}Aadvi_${billType}_${safeId}_${timestamp}.pdf`;
-      await FileSystem.moveAsync({ from: uri, to: newPath });
-      await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
     } catch (e) {
       console.log('PDF Generation Error:', e);
       showAlert('error', 'Error', `Failed to generate PDF: ${e.message}`);

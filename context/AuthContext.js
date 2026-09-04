@@ -33,8 +33,24 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (credentials, deferStateUpdate = false) => {
     try {
-      const response = await axios.post(API_ENDPOINTS.LOGIN, credentials);
-      const { token, user } = response.data;
+      const response = await fetch(API_ENDPOINTS.LOGIN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw 'Network error or invalid server response';
+      }
+
+      if (!response.ok) {
+        throw data.message || 'Login failed';
+      }
+
+      const { token, user } = data;
       
       // Set axios header synchronously BEFORE state updates trigger navigation
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -50,7 +66,7 @@ export const AuthProvider = ({ children }) => {
       
       return { token, user };
     } catch (error) {
-      throw error.response?.data?.message || 'Login failed';
+      throw typeof error === 'string' ? error : (error.message || 'Login failed');
     }
   }, []);
 
