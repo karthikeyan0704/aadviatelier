@@ -17,7 +17,7 @@ import {
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import SuccessModal from '../components/SuccessModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -426,7 +426,7 @@ export default function OrderDetails() {
       await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
     } catch (e) {
       console.log('PDF Generation Error:', e);
-      showAlert('error', 'Error', 'Failed to generate PDF');
+      showAlert('error', 'Error', `Failed to generate PDF: ${e.message}`);
     }
   };
 

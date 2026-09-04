@@ -12,7 +12,7 @@ import CustomAlert from '../../components/CustomAlert';
 import SuccessModal from '../../components/SuccessModal';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export default function Checkout() {
   const router = useRouter();
@@ -308,7 +308,7 @@ export default function Checkout() {
       await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
     } catch (e) {
       console.log(e);
-      showAlert('error', 'Error', 'Failed to generate PDF');
+      showAlert('error', 'Error', `Failed to generate PDF: ${e.message}`);
     }
   };
 

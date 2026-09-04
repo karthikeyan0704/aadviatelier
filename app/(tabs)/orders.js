@@ -22,7 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatOrderId } from '../../utils/formatters';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const TABS = ['Active', 'Past Due', 'Upcoming', 'Pending Amount', 'Delivered', 'Draft'];
 
@@ -241,7 +241,7 @@ export default function OrdersScreen() {
       await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
     } catch (e) {
       console.log(e);
-      Alert.alert('Error', 'Failed to generate PDF');
+      Alert.alert('Error', `Failed to generate PDF: ${e.message}`);
     }
   };
 
