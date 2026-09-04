@@ -43,7 +43,8 @@ export default function OrderDetails() {
     quantity: 1,
     stitchingPrice: '',
     extraCharge: '',
-    extraChargeReason: ''
+    extraChargeReason: '',
+    extraCharges: []
   });
   
   const [refImages, setRefImages] = useState([]);
@@ -248,7 +249,8 @@ export default function OrderDetails() {
     const qty = parseInt(orderInfo.quantity) || 1;
     const price = parseFloat(orderInfo.stitchingPrice) || 0;
     const extra = parseFloat(orderInfo.extraCharge) || 0;
-    return (qty * price) + extra;
+    const newExtra = (orderInfo.extraCharges || []).reduce((sum, ec) => sum + (parseFloat(ec.amount) || 0), 0);
+    return (qty * price) + extra + newExtra;
   };
 
   const handleAddToCart = (action) => {
@@ -650,35 +652,56 @@ export default function OrderDetails() {
                 blurOnSubmit={false}
               />
             </View>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Extra Charge (Optional)</Text>
-              <TextInput 
-                ref={(el) => (inputRefs.current['extraCharge'] = el)}
-                style={styles.priceInput} 
-                placeholder="0" 
-                keyboardType="numeric" 
-                value={orderInfo.extraCharge}
-                onChangeText={(v) => setOrderInfo({...orderInfo, extraCharge: v.replace(/[^0-9.]/g, '')})}
-                placeholderTextColor="#999"
-                returnKeyType="next"
-                onSubmitEditing={() => inputRefs.current['extraChargeReason']?.focus()}
-                blurOnSubmit={false}
-              />
-            </View>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Extra Charge Reason</Text>
-              <TextInput 
-                ref={(el) => (inputRefs.current['extraChargeReason'] = el)}
-                style={[styles.priceInput, { width: 140 }]} 
-                placeholder="e.g. Urgent, Aari" 
-                value={orderInfo.extraChargeReason}
-                onChangeText={(v) => setOrderInfo({...orderInfo, extraChargeReason: v})}
-                placeholderTextColor="#999"
-                returnKeyType="next"
-                onSubmitEditing={() => inputRefs.current['advancePaid']?.focus()}
-                blurOnSubmit={false}
-              />
-            </View>
+            {(orderInfo.extraCharges || []).map((ec, idx) => (
+              <View key={idx} style={{marginBottom: 10, borderWidth: 1, borderColor: '#eee', padding: 10, borderRadius: 8}}>
+                <View style={{flexDirection: 'row', gap: 10}}>
+                  <View style={{flex: 1.5}}>
+                    <Text style={[styles.priceLabel, {marginBottom: 6, fontSize: 12, color: Colors.textSecondary}]}>Reason</Text>
+                    <TextInput 
+                      style={[styles.priceInput, { width: '100%', textAlign: 'left' }]} 
+                      placeholder="e.g. Aari work" 
+                      value={ec.reason}
+                      onChangeText={(v) => {
+                        const newEC = [...(orderInfo.extraCharges || [])];
+                        newEC[idx].reason = v;
+                        setOrderInfo({...orderInfo, extraCharges: newEC});
+                      }}
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={[styles.priceLabel, {marginBottom: 6, fontSize: 12, color: Colors.textSecondary}]}>Amount</Text>
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                      <TextInput 
+                        style={[styles.priceInput, { flex: 1, width: 'auto' }]} 
+                        placeholder="0" 
+                        keyboardType="numeric" 
+                        value={ec.amount}
+                        onChangeText={(v) => {
+                          const newEC = [...(orderInfo.extraCharges || [])];
+                          newEC[idx].amount = v.replace(/[^0-9.]/g, '');
+                          setOrderInfo({...orderInfo, extraCharges: newEC});
+                        }}
+                        placeholderTextColor="#999"
+                      />
+                      <TouchableOpacity onPress={() => {
+                        const newEC = (orderInfo.extraCharges || []).filter((_, i) => i !== idx);
+                        setOrderInfo({...orderInfo, extraCharges: newEC});
+                      }} style={{marginLeft: 10, padding: 4}}>
+                        <Trash2 size={18} color={Colors.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity 
+              style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.primary, borderRadius: 8}}
+              onPress={() => setOrderInfo({...orderInfo, extraCharges: [...(orderInfo.extraCharges || []), {reason: '', amount: ''}]})}
+            >
+              <Plus size={16} color={Colors.primary} />
+              <Text style={{color: Colors.primary, marginLeft: 5, fontWeight: '600'}}>Add Extra Charge</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Price Breakup */}
@@ -694,6 +717,17 @@ export default function OrderDetails() {
                 <Text style={styles.breakupText}>₹ {orderInfo.extraCharge}</Text>
               </View>
             )}
+            {(orderInfo.extraCharges || []).map((ec, idx) => {
+              if (parseFloat(ec.amount) > 0) {
+                return (
+                  <View key={idx} style={[styles.breakupRow, {marginTop: 4}]}>
+                    <Text style={styles.breakupText}>Extra ({ec.reason || 'Other'})</Text>
+                    <Text style={styles.breakupText}>₹ {ec.amount}</Text>
+                  </View>
+                );
+              }
+              return null;
+            })}
             <View style={[styles.breakupRow, {marginTop: 8, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingBottom: 12}]}>
               <Text style={[styles.breakupText, {fontWeight: 'bold'}]}>Total:</Text>
               <Text style={[styles.breakupText, {fontWeight: 'bold', color: Colors.primary}]}>₹ {calculateTotal()}</Text>

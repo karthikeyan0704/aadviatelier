@@ -128,16 +128,38 @@ export default function OrdersScreen() {
       const totalAdvance = group.orders.reduce((sum, item) => sum + (item.billing?.totalPaid || item.billing?.advancePaid || 0), 0);
       const balanceDue = Math.max(grandTotal - totalAdvance, 0);
       const date = new Date().toLocaleDateString('en-GB');
+
+      let qrCodeHtml = '';
+      if (balanceDue > 0) {
+        // IMPORTANT: Update this UPI ID to your actual business UPI ID
+        const upiId = 'sathyaatamilselvan-1@oksbi'; 
+        const upiName = 'Sathyaa Tamilselvan';
+        const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${balanceDue}&cu=INR`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
+        
+        qrCodeHtml = `
+          <div style="margin-top: 30px; float: left; text-align: center; border: 1px dashed #5959be; padding: 15px; border-radius: 8px;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #5959be;">Scan to Pay Balance</p>
+            <img src="${qrUrl}" width="120" height="120" alt="UPI QR Code" />
+            <p style="margin: 10px 0 0 0; font-size: 14px; font-weight: bold;">₹${balanceDue.toLocaleString('en-IN')}</p>
+          </div>
+        `;
+      }
       
-      let itemsHtml = group.orders.map((item, idx) => `
+      let itemsHtml = group.orders.map((item, idx) => {
+        let extraHtml = '';
+        if (item.extraCharges && item.extraCharges.length > 0) {
+          extraHtml = item.extraCharges.map(ec => `<br/><small style="color: #555">+ Extra Charge (${ec.description || 'Other'}): ₹${ec.amount}</small>`).join('');
+        }
+        return `
         <tr>
           <td>${idx + 1}</td>
-          <td>${item.category} - ${item.dressType}<br/><small style="color: #777">${(item.specialInstructions || '').replace(/\n/g, '<br/>')}</small></td>
+          <td>${item.category} - ${item.dressType}<br/><small style="color: #777">${(item.specialInstructions || '').replace(/\n/g, '<br/>')}</small>${extraHtml}</td>
           <td>${item.quantity || 1}</td>
           <td>₹${item.stitchingPrice || 0}</td>
           <td style="text-align: right;">₹${item.billing?.estimatedCost || 0}</td>
         </tr>
-      `).join('');
+      `}).join('');
       
       const html = `
         <html>
@@ -188,10 +210,13 @@ export default function OrdersScreen() {
               </tbody>
             </table>
             
-            <div class="total-section">
-              <div class="total-row"><span>Total Amount:</span> <span>₹${grandTotal.toLocaleString('en-IN')}</span></div>
-              <div class="total-row"><span>Paid Amount:</span> <span>₹${totalAdvance.toLocaleString('en-IN')}</span></div>
-              <div class="total-row bold"><span>Balance Due:</span> <span>₹${balanceDue.toLocaleString('en-IN')}</span></div>
+            <div>
+              ${qrCodeHtml}
+              <div class="total-section">
+                <div class="total-row"><span>Total Amount:</span> <span>₹${grandTotal.toLocaleString('en-IN')}</span></div>
+                <div class="total-row"><span>Paid Amount:</span> <span>₹${totalAdvance.toLocaleString('en-IN')}</span></div>
+                <div class="total-row bold"><span>Balance Due:</span> <span>₹${balanceDue.toLocaleString('en-IN')}</span></div>
+              </div>
             </div>
             
             <div class="footer">

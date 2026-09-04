@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
   ActivityIndicator, Linking, Image,
-  TextInput, Modal, RefreshControl, Platform
+  TextInput, Modal, RefreshControl, Platform, KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -754,7 +754,7 @@ export default function OrderDetails() {
 
       {/* Payment Modal */}
       <Modal visible={paymentModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Record Payment</Text>
@@ -787,11 +787,11 @@ export default function OrderDetails() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Edit Bill Modal */}
       <Modal visible={editBillModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Add Extra Charges</Text>
@@ -821,7 +821,7 @@ export default function OrderDetails() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Invoice Options Modal */}

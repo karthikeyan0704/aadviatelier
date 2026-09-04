@@ -62,6 +62,10 @@ export default function Checkout() {
         formData.append('stitchingPrice', item.orderInfo.stitchingPrice || '0');
         formData.append('additionalCosts', item.orderInfo.extraCharge || '0');
         formData.append('description', item.orderInfo.extraChargeReason || '');
+        if (item.orderInfo.extraCharges && item.orderInfo.extraCharges.length > 0) {
+          const formattedExtra = item.orderInfo.extraCharges.filter(ec => parseFloat(ec.amount) > 0).map(ec => ({ description: ec.reason || 'Extra Charge', amount: parseFloat(ec.amount) }));
+          formData.append('extraCharges', JSON.stringify(formattedExtra));
+        }
         
         formData.append('measurements', JSON.stringify({ ...item.measurements, dressType: item.dressType }));
         if (item.assignedTo.cuttingMaster || item.assignedTo.stitchingMaster) {
@@ -182,16 +186,47 @@ export default function Checkout() {
       if (!customer || !orderItems || orderItems.length === 0) return;
 
       const date = new Date().toLocaleDateString('en-GB');
+      const balanceDue = Math.max(grandTotal - advancePaid, 0);
       
-      let itemsHtml = orderItems.map((item, idx) => `
+      let qrCodeHtml = '';
+      if (balanceDue > 0) {
+        // IMPORTANT: Update this UPI ID to your actual business UPI ID
+        const upiId = 'sathyaatamilselvan-1@oksbi'; 
+        const upiName = 'Sathyaa Tamilselvan';
+        const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${balanceDue}&cu=INR`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
+        
+        qrCodeHtml = `
+          <div style="margin-top: 30px; float: left; text-align: center; border: 1px dashed #5959be; padding: 15px; border-radius: 8px;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #5959be;">Scan to Pay Balance</p>
+            <img src="${qrUrl}" width="120" height="120" alt="UPI QR Code" />
+            <p style="margin: 10px 0 0 0; font-size: 14px; font-weight: bold;">₹${balanceDue.toLocaleString('en-IN')}</p>
+          </div>
+        `;
+      }
+      
+      let itemsHtml = orderItems.map((item, idx) => {
+        let extraHtml = '';
+        if (parseFloat(item.orderInfo.extraCharge) > 0) {
+          extraHtml += `<br/><small style="color: #555">+ Extra Charge (${item.orderInfo.extraChargeReason || 'Other'}): ₹${item.orderInfo.extraCharge}</small>`;
+        }
+        if (item.orderInfo.extraCharges && item.orderInfo.extraCharges.length > 0) {
+          extraHtml += item.orderInfo.extraCharges.map(ec => {
+            if (parseFloat(ec.amount) > 0) {
+              return `<br/><small style="color: #555">+ Extra Charge (${ec.reason || 'Other'}): ₹${ec.amount}</small>`;
+            }
+            return '';
+          }).join('');
+        }
+        return `
         <tr>
           <td>${idx + 1}</td>
-          <td>${item.category} - ${item.dressType}<br/><small style="color: #777">${(item.orderInfo.specialInstructions || '').replace(/\n/g, '<br/>')}</small></td>
+          <td>${item.category} - ${item.dressType}<br/><small style="color: #777">${(item.orderInfo.specialInstructions || '').replace(/\n/g, '<br/>')}</small>${extraHtml}</td>
           <td>${item.orderInfo.quantity || 1}</td>
           <td>₹${item.orderInfo.stitchingPrice || 0}</td>
           <td style="text-align: right;">₹${item.total}</td>
         </tr>
-      `).join('');
+      `}).join('');
       
       const html = `
         <html>
@@ -242,10 +277,13 @@ export default function Checkout() {
               </tbody>
             </table>
             
-            <div class="total-section">
-              <div class="total-row"><span>Total Amount:</span> <span>₹${grandTotal.toLocaleString('en-IN')}</span></div>
-              <div class="total-row"><span>Paid Amount:</span> <span>₹${advancePaid.toLocaleString('en-IN')}</span></div>
-              <div class="total-row bold"><span>Balance Due:</span> <span>₹${(grandTotal - advancePaid).toLocaleString('en-IN')}</span></div>
+            <div>
+              ${qrCodeHtml}
+              <div class="total-section">
+                <div class="total-row"><span>Total Amount:</span> <span>₹${grandTotal.toLocaleString('en-IN')}</span></div>
+                <div class="total-row"><span>Paid Amount:</span> <span>₹${advancePaid.toLocaleString('en-IN')}</span></div>
+                <div class="total-row bold"><span>Balance Due:</span> <span>₹${balanceDue.toLocaleString('en-IN')}</span></div>
+              </div>
             </div>
             
             <div class="footer">
