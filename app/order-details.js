@@ -322,6 +322,27 @@ export default function OrderDetails() {
           </tr>
         `).join('');
       }
+
+      let qrCodeHtml = '';
+      if (balanceDue > 0) {
+        const upiId = 'sathyaatamilselvan-1@oksbi'; 
+        const upiName = 'Sathyaa Tamilselvan';
+        const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${balanceDue}&cu=INR`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
+        
+        qrCodeHtml = `
+          <div style="margin-top: 30px; float: left; text-align: center; border: 1px dashed #5959be; padding: 15px; border-radius: 8px; background-color: #fcfcff;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #5959be;">Scan to Pay Balance</p>
+            <img src="${qrUrl}" width="120" height="120" alt="UPI QR Code" />
+            <p style="margin: 8px 0 8px 0; font-size: 15px; font-weight: bold;">₹${balanceDue.toLocaleString('en-IN')}</p>
+            <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Google_Pay_Logo.svg/120px-Google_Pay_Logo.svg.png" height="14" alt="GPay" />
+              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/PhonePe_Logo.svg/120px-PhonePe_Logo.svg.png" height="16" alt="PhonePe" />
+              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Paytm_Logo_%28standalone%29.svg/120px-Paytm_Logo_%28standalone%29.svg.png" height="10" alt="Paytm" />
+            </div>
+          </div>
+        `;
+      }
       
       const html = `
         <html>
@@ -378,10 +399,13 @@ export default function OrderDetails() {
               </tbody>
             </table>
             
-            <div class="total-section">
-              <div class="total-row"><span>Total Amount:</span> <span>₹${totalAmount.toLocaleString('en-IN')}</span></div>
-              <div class="total-row"><span>Paid Amount:</span> <span>₹${advancePaid.toLocaleString('en-IN')}</span></div>
-              <div class="total-row bold"><span>Balance Due:</span> <span>₹${balanceDue.toLocaleString('en-IN')}</span></div>
+            <div>
+              ${qrCodeHtml}
+              <div class="total-section">
+                <div class="total-row"><span>Total Amount:</span> <span>₹${totalAmount.toLocaleString('en-IN')}</span></div>
+                <div class="total-row"><span>Paid Amount:</span> <span>₹${advancePaid.toLocaleString('en-IN')}</span></div>
+                <div class="total-row bold"><span>Balance Due:</span> <span>₹${balanceDue.toLocaleString('en-IN')}</span></div>
+              </div>
             </div>
             
             <div class="footer">
