@@ -130,6 +130,7 @@ function RootLayoutNav() {
       <Stack.Screen name="edit-staff" options={{ presentation: 'modal' }} />
       <Stack.Screen name="profile" />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="notifications" />
     </Stack>
   );
 }

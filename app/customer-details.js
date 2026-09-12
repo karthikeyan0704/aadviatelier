@@ -277,10 +277,12 @@ export default function CustomerDetails() {
                        </View>
                     </View>
                     <View style={styles.detailedOrderTopRight}>
-                      <View style={styles.detailedOrderTag}>
-                         <Tag size={12} color={Colors.primary} style={{marginRight: 4}}/>
-                         <Text style={styles.detailedOrderTagText}>Stitching</Text>
-                      </View>
+                      {order.status !== 'Delivered' && (
+                        <View style={styles.detailedOrderTag}>
+                           <Tag size={12} color={Colors.primary} style={{marginRight: 4}}/>
+                           <Text style={styles.detailedOrderTagText}>{order.type || 'Stitching'}</Text>
+                        </View>
+                      )}
                       <View style={[styles.detailedAcceptedBtn, { borderColor: Colors.primary, backgroundColor: Colors.primary+'10' }]}>
                          <Text style={[styles.detailedAcceptedBtnText, { color: Colors.primary }]}>{order.status}</Text>
                       </View>

@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   RefreshControl,
   ActivityIndicator,
-  Image
+  Image,
+  DeviceEventEmitter
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
@@ -20,6 +21,8 @@ import {
   Sparkles, 
   CheckCircle, 
   CreditCard,
+  AlertTriangle,
+  FileText,
   Plus,
   User
 } from 'lucide-react-native';
@@ -36,7 +39,7 @@ function OwnerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await axios.get(API_ENDPOINTS.DASHBOARD);
       setStats(response.data);
@@ -48,18 +51,27 @@ function OwnerDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       fetchStats();
-    }, [])
+    }, [fetchStats])
   );
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('ordersChanged', fetchStats);
+    return () => subscription.remove();
+  }, [fetchStats]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchStats();
-  }, []);
+  }, [fetchStats]);
+
+  const openOrders = (overview) => {
+    router.push({ pathname: '/orders', params: { overview } });
+  };
 
   const StatCard = ({ title, count, icon: Icon, onPress }) => (
     <TouchableOpacity style={styles.card} onPress={onPress}>
@@ -104,12 +116,19 @@ function OwnerDashboard() {
         <Text style={styles.sectionTitle}>Overview</Text>
         
         <View style={styles.statsGrid}>
-          <StatCard title="Today Deliveries" count={stats?.todayDeliveries} icon={Package} onPress={() => router.push('/(tabs)/orders')} />
-          <StatCard title="Pending Orders" count={stats?.pendingOrders} icon={Clock} onPress={() => router.push('/(tabs)/orders')} />
-          <StatCard title="Under Stitching" count={stats?.underStitching} icon={Scissors} onPress={() => router.push('/(tabs)/orders')} />
-          <StatCard title="Aari Work Pending" count={stats?.aariWorkPending} icon={Sparkles} onPress={() => router.push('/(tabs)/orders')} />
-          <StatCard title="Completed Orders" count={stats?.completedOrders} icon={CheckCircle} onPress={() => router.push('/(tabs)/orders')} />
-          <StatCard title="Payment Pending" count={stats?.paymentPending} icon={CreditCard} onPress={() => router.push('/(tabs)/orders')} />
+          <StatCard title="Today Deliveries" count={stats?.todayDeliveries} icon={Package} onPress={() => openOrders('today-deliveries')} />
+          <StatCard
+            title="Pending Orders"
+            count={stats?.pendingOrders}
+            icon={Clock}
+            onPress={() => openOrders('pending')}
+          />
+          <StatCard title="Overdue Orders" count={stats?.overdueOrders} icon={AlertTriangle} onPress={() => openOrders('overdue')} />
+          <StatCard title="Draft Orders" count={stats?.draftOrders} icon={FileText} onPress={() => openOrders('draft')} />
+          <StatCard title="Under Stitching" count={stats?.underStitching} icon={Scissors} onPress={() => openOrders('under-stitching')} />
+          <StatCard title="Aari Work Pending" count={stats?.aariWorkPending} icon={Sparkles} onPress={() => openOrders('aari-pending')} />
+          <StatCard title="Completed Orders" count={stats?.completedOrders} icon={CheckCircle} onPress={() => openOrders('completed')} />
+          <StatCard title="Payment Pending" count={stats?.paymentPending} icon={CreditCard} onPress={() => openOrders('payment-pending')} />
         </View>
 
         <View style={styles.quickActions}>
@@ -141,7 +160,7 @@ const styles = StyleSheet.create({
   welcomeText: { fontSize: 14, color: Colors.white, opacity: 0.8 },
   ownerName: { fontSize: 24, fontWeight: 'bold', color: Colors.white },
   profileBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 20 ,marginBottom: -6},
-  scrollContent: { padding: Spacing.lg },
+  scrollContent: { padding: Spacing.lg, paddingBottom: 100 },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.primary, marginBottom: Spacing.md },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   card: { width: '48%', backgroundColor: Colors.white, padding: Spacing.md, borderRadius: BorderRadius.lg, marginBottom: Spacing.md, ...Shadows.sm, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderLeftColor: Colors.secondary },

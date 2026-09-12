@@ -53,7 +53,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <SettingItem icon={Shield} title="Privacy & Security" />
-          <SettingItem icon={Bell} title="Notifications" />
+          <SettingItem icon={Bell} title="Notifications" onPress={() => router.push('/notifications')} />
         </View>
 
         {(user?.role === 'owner' || user?.role === 'admin') && (

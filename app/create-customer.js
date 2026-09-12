@@ -7,7 +7,6 @@ import {
   TouchableOpacity, 
   ScrollView, 
   SafeAreaView,
-  Alert,
   ActivityIndicator,
   Image,
   Platform,
@@ -24,12 +23,15 @@ import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
+import { useAuth } from '../context/AuthContext';
 import SuccessModal from '../components/SuccessModal';
+import CustomAlert from '../components/CustomAlert';
 
 // Using OpenStreetMap Nominatim for free autocomplete
 
 export default function CreateCustomer() {
   const router = useRouter();
+  const { authenticatedFetch } = useAuth();
   const { id } = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
   const [profileImage, setProfileImage] = useState(null);
@@ -41,6 +43,11 @@ export default function CreateCustomer() {
   const [predictions, setPredictions] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
+  const [customAlert, setCustomAlert] = useState({ visible: false, type: 'error', title: '', message: '' });
+
+  const showAlert = (type, title, message) => {
+    setCustomAlert({ visible: true, type, title, message });
+  };
 
   const [form, setForm] = useState({
     name: '',
@@ -81,7 +88,7 @@ export default function CreateCustomer() {
       }
     } catch (err) {
       console.log('Fetch for edit failed', err);
-      Alert.alert('Error', 'Failed to load customer data for editing');
+      showAlert('error', 'Unable to load customer', 'Customer details could not be loaded. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -140,6 +147,7 @@ export default function CreateCustomer() {
       setPredictions(response.data);
     } catch (error) {
       console.error(error);
+      showAlert('error', 'Address search unavailable', 'Could not search for addresses right now. Please check your connection and try again.');
     } finally {
       setSearchLoading(false);
     }
@@ -153,14 +161,20 @@ export default function CreateCustomer() {
   };
 
   const requestLocation = async () => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission denied', 'Allow location to fetch your current address.');
-      return;
-    }
-    
-    setSearchLoading(true);
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('warning', 'Location permission needed', 'Allow location access to fill your current address. You can also search and select an address manually.');
+        return;
+      }
+
+      const locationServicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!locationServicesEnabled) {
+        showAlert('warning', 'Turn on location services', 'GPS or device location is turned off. Enable it in your phone settings, or search for the address manually.');
+        return;
+      }
+
+      setSearchLoading(true);
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       let reverse = await Location.reverseGeocodeAsync({
         latitude: location.coords.latitude,
@@ -180,12 +194,23 @@ export default function CreateCustomer() {
         ].filter(p => p && p !== 'null' && p !== '');
         
         const full = parts.join(', ');
-        setForm(prev => ({ ...prev, address: { ...prev.address, fullAddress: full } }));
-        setSearchModalVisible(false); // Close modal after fetching location
+        if (full) {
+          setForm(prev => ({ ...prev, address: { ...prev.address, fullAddress: full } }));
+          setSearchModalVisible(false); // Close modal after fetching location
+        } else {
+          showAlert('error', 'Location not found', 'We could not determine an address for your current location. Please search for it manually.');
+        }
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', 'Could not get location. Make sure GPS is on.');
+      const isUnavailable = /unavailable|disabled|provider|location service/i.test(e?.message || '');
+      showAlert(
+        'error',
+        isUnavailable ? 'Location is unavailable' : 'Could not get location',
+        isUnavailable
+          ? 'Turn on GPS or device location in your phone settings, then try again. You can also search for the address manually.'
+          : 'We could not get your current location. Please try again or search for the address manually.'
+      );
     } finally {
       setSearchLoading(false);
     }
@@ -193,7 +218,7 @@ export default function CreateCustomer() {
 
   const handleSubmit = async () => {
     if (!form.name || !form.mobileNumber) {
-      Alert.alert("Required Fields", "Please enter at least Name and Mobile Number");
+      showAlert('warning', 'Required fields', 'Please enter at least a name and mobile number.');
       return;
     }
 
@@ -218,7 +243,6 @@ export default function CreateCustomer() {
       }
 
       // Get the auth token from axios defaults
-      const authToken = axios.defaults.headers.common['Authorization'];
 
       const url = id ? `${API_ENDPOINTS.CUSTOMERS}/${id}` : API_ENDPOINTS.CUSTOMERS;
       const method = id ? 'PUT' : 'POST';
@@ -226,10 +250,9 @@ export default function CreateCustomer() {
       // Use fetch instead of axios — axios in React Native production builds
       // often fails to set the correct multipart/form-data boundary, causing
       // multer on the server to silently fail at parsing the request body.
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method,
         headers: {
-          ...(authToken ? { 'Authorization': authToken } : {}),
           // Do NOT set Content-Type manually — React Native's fetch will
           // auto-set it with the correct multipart boundary for FormData
         },
@@ -249,7 +272,7 @@ export default function CreateCustomer() {
     } catch (error) {
       console.error('Customer save error:', error);
       const msg = error.message || 'Failed to save customer';
-      Alert.alert("Error", msg);
+      showAlert('error', 'Could not save customer', msg);
     } finally {
       setLoading(false);
     }
@@ -354,15 +377,31 @@ export default function CreateCustomer() {
 
           <View style={styles.section}>
              <Text style={styles.label}>Address</Text>
-             <TouchableOpacity 
-                style={styles.addressDisplay} 
-                onPress={() => setSearchModalVisible(true)}
+             <TouchableOpacity
+                style={styles.addressDisplay}
+                onPress={() => {
+                  setSearchQuery(form.address.fullAddress);
+                  setSearchModalVisible(true);
+                }}
              >
                 <MapPin size={20} color={Colors.primary} />
                 <Text style={[styles.addressText, !form.address.fullAddress && {color: '#999'}]} numberOfLines={1}>
                   {form.address.fullAddress || 'Search Address'}
                 </Text>
-                <Search size={20} color={Colors.primary} />
+                {form.address.fullAddress ? (
+                  <TouchableOpacity
+                    accessibilityLabel="Clear selected address"
+                    hitSlop={8}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setForm(prev => ({ ...prev, address: { ...prev.address, fullAddress: '' } }));
+                      setSearchQuery('');
+                      setPredictions([]);
+                    }}
+                  >
+                    <X size={20} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : <Search size={20} color={Colors.primary} />}
              </TouchableOpacity>
 
              <TextInput 
@@ -454,6 +493,13 @@ export default function CreateCustomer() {
           setSuccessModal({ visible: false, message: '' }); 
           router.back(); 
         }} 
+      />
+      <CustomAlert
+        visible={customAlert.visible}
+        type={customAlert.type}
+        title={customAlert.title}
+        message={customAlert.message}
+        onDismiss={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

@@ -16,19 +16,19 @@ import * as Sharing from 'expo-sharing';
 export default function Checkout() {
   const router = useRouter();
   const { cart, removeFromCart, clearCart, customerId } = useCart();
-  const { token } = useAuth();
+  const { authenticatedFetch } = useAuth();
   
-  const [advancePaid, setAdvancePaid] = useState('');
+  const [advancePaid, setAdvancePaid] = useState('0');
   const [loading, setLoading] = useState(false);
   const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '' });
-  const [successModal, setSuccessModal] = useState({ visible: false, whatsappLink: '', customer: null, orderItems: [], grandTotal: 0, advancePaid: 0 });
+  const [successModal, setSuccessModal] = useState({ visible: false, whatsappLink: '', customer: null, orderItems: [], message: '', isDraft: false });
 
   const showAlert = (type, title, message) => setCustomAlert({ visible: true, type, title, message });
   const dismissAlert = () => setCustomAlert(prev => ({ ...prev, visible: false }));
 
   const grandTotal = cart.reduce((sum, item) => sum + item.total, 0);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isDraft = false) => {
     if (cart.length === 0) {
       showAlert('warning', 'Empty Cart', 'Please add items to your order first.');
       return;
@@ -51,6 +51,7 @@ export default function Checkout() {
         formData.append('type', item.orderInfo.type);
         formData.append('specialInstructions', item.orderInfo.specialInstructions);
         formData.append('deliveryDate', new Date(item.orderInfo.deliveryDate).toISOString());
+        formData.append('status', isDraft ? 'Draft' : 'Pending');
         
         if (item.orderInfo.trialDate) {
           formData.append('trialDate', new Date(item.orderInfo.trialDate).toISOString());
@@ -107,11 +108,8 @@ export default function Checkout() {
           });
         }
 
-        const response = await fetch(API_ENDPOINTS.ORDERS, {
+        const response = await authenticatedFetch(API_ENDPOINTS.ORDERS, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
           body: formData
         });
         
@@ -121,7 +119,7 @@ export default function Checkout() {
         }
 
         // Save legacy measurements
-        if (!item.useExisting && Object.keys(item.measurements).length > 0) {
+        if (!isDraft && !item.useExisting && Object.keys(item.measurements).length > 0) {
           try {
             const res = await axios.get(`${API_ENDPOINTS.CUSTOMERS}/${item.customerId}`);
             const cust = res.data.customer;
@@ -149,18 +147,37 @@ export default function Checkout() {
         }
       }
 
-      // Generate Master WhatsApp Invoice
+      const orderItemsCopy = [...cart];
+
+      if (isDraft) {
+        clearCart();
+        setSuccessModal({
+          visible: true,
+          whatsappLink: '',
+          customer: null,
+          orderItems: orderItemsCopy,
+          message: 'Your order draft has been saved. You can confirm it later from Draft Orders.',
+          isDraft: true,
+        });
+        return;
+      }
+
       const custRes = await axios.get(`${API_ENDPOINTS.CUSTOMERS}/${customerId}`);
       const customer = custRes.data.customer;
       
-      let itemsList = cart.map((item, index) => `${index + 1}. ${item.category} - ${item.dressType} (₹${item.total})`).join('\n');
+      const itemsList = cart.map((item, index) => {
+        const deliveryDate = item.orderInfo.deliveryDate
+          ? new Date(item.orderInfo.deliveryDate).toLocaleDateString('en-GB')
+          : 'Not specified';
+        const description = item.orderInfo.description || item.orderInfo.specialInstructions || 'Not specified';
+        return `${index + 1}. ${item.category} - ${item.dressType}\n   Quantity: ${item.orderInfo.quantity || 1}\n   Delivery Date: ${deliveryDate}\n   Description: ${description}`;
+      }).join('\n');
       
-      const message = `*Aadvi Designer Studio*\n🧾 *MASTER INVOICE*\n\n*Customer:* ${customer.name}\n\n*Items Ordered:*\n${itemsList}\n\n*Billing Summary:*\nGrand Total: ₹${grandTotal}\nAdvance Paid: ₹${totalAdvance}\n*Balance Due:* ₹${grandTotal - totalAdvance}\n\nThank you for choosing Aadvi Designer Studio! 🙏`;
+      const message = `Aadvi Designer Studio\n\nOrder Confirmed\n\nCustomer: ${customer.name}\n\nOrder Details:\n${itemsList}\n\nThank you for choosing Aadvi Designer Studio!`;
+      const whatsappMessage = `*Aadvi Designer Studio*\n\n✅ *Order Confirmed*\n\n*Customer:* ${customer.name}\n\n*Order Details:*\n${itemsList}\n\nThank you for choosing Aadvi Designer Studio!`;
       
-      const encodedMessage = encodeURIComponent(message);
+      const encodedMessage = encodeURIComponent(whatsappMessage);
       const link = `https://wa.me/91${customer.mobileNumber.replace(/\D/g, '')}?text=${encodedMessage}`;
-      
-      const orderItemsCopy = [...cart];
       
       clearCart();
       setSuccessModal({ 
@@ -168,8 +185,8 @@ export default function Checkout() {
         whatsappLink: link, 
         customer, 
         orderItems: orderItemsCopy, 
-        grandTotal, 
-        advancePaid: totalAdvance 
+        message,
+        isDraft: false,
       });
 
     } catch (error) {
@@ -363,10 +380,10 @@ export default function Checkout() {
             <View style={[styles.breakupRow, {marginTop: 12}]}>
               <Text style={styles.breakupText}>Total Advance Paid</Text>
               <TextInput 
-                style={[styles.priceInput, {width: 100, height: 40, fontSize: 16}]} 
-                placeholder="0" 
+                style={[styles.priceInput, {width: 100, height: 40, paddingVertical: 0, fontSize: 16, lineHeight: 20, color: Colors.text, textAlign: 'center', textAlignVertical: 'center'}]} 
                 keyboardType="numeric" 
                 value={advancePaid}
+                selectTextOnFocus
                 onChangeText={(v) => {
                   const cleaned = v.replace(/[^0-9.]/g, '');
                   const num = parseFloat(cleaned);
@@ -386,7 +403,12 @@ export default function Checkout() {
             </View>
           </View>
 
-          <TouchableOpacity style={[styles.submitButton, loading && styles.disabled]} onPress={handleSubmit} disabled={loading || cart.length === 0}>
+          <TouchableOpacity style={[styles.draftButton, loading && styles.disabled]} onPress={() => handleSubmit(true)} disabled={loading || cart.length === 0}>
+            <FileText size={20} color={Colors.primary} />
+            <Text style={styles.draftButtonText}>Save as Draft</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.submitButton, loading && styles.disabled]} onPress={() => handleSubmit(false)} disabled={loading || cart.length === 0}>
             {loading ? <ActivityIndicator color={Colors.white} /> : (
               <>
                 <Text style={styles.submitText}>Confirm Order</Text>
@@ -407,11 +429,14 @@ export default function Checkout() {
       
       <SuccessModal
         visible={successModal.visible}
-        title="Order Confirmed!"
-        message="The orders have been successfully saved."
-        secondaryText="Send WhatsApp Invoice"
+        title={successModal.isDraft ? 'Draft Saved!' : 'Order Confirmed!'}
+        message={successModal.message || 'The orders have been successfully saved.'}
+        orderConfirmation={!successModal.isDraft}
+        customer={successModal.customer}
+        orderItems={successModal.orderItems}
+        secondaryText={successModal.isDraft ? undefined : 'Send Order Details'}
         secondaryIcon={<MessageCircle size={20} color="#fff" />}
-        onSecondaryAction={async () => {
+        onSecondaryAction={successModal.isDraft ? undefined : async () => {
           if (successModal.whatsappLink) {
             try {
               if (await Linking.canOpenURL(successModal.whatsappLink)) {
@@ -422,11 +447,8 @@ export default function Checkout() {
             }
           }
         }}
-        tertiaryText="Share Master PDF Invoice"
-        tertiaryIcon={<FileText size={20} color={Colors.primary} />}
-        onTertiaryAction={generateMasterPDF}
         onDone={() => {
-          setSuccessModal({ visible: false, whatsappLink: '', customer: null, orderItems: [], grandTotal: 0, advancePaid: 0 });
+          setSuccessModal({ visible: false, whatsappLink: '', customer: null, orderItems: [], message: '', isDraft: false });
           router.dismissAll();
         }}
       />
@@ -465,5 +487,7 @@ const styles = StyleSheet.create({
 
   submitButton: { backgroundColor: Colors.primary, flexDirection: 'row', height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.lg },
   submitText: { color: Colors.white, fontSize: 16, fontWeight: 'bold', marginRight: Spacing.sm },
+  draftButton: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.primary, flexDirection: 'row', height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.lg },
+  draftButtonText: { color: Colors.primary, fontSize: 16, fontWeight: 'bold', marginLeft: Spacing.sm },
   disabled: { opacity: 0.7 }
 });

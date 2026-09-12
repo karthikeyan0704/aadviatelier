@@ -13,7 +13,7 @@ import {
   Image
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { User, Phone, Lock, Save, ArrowLeft, Camera, Trash2 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';

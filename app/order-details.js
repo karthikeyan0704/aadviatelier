@@ -17,13 +17,16 @@ import {
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import SuccessModal from '../components/SuccessModal';
 import ConfirmModal from '../components/ConfirmModal';
 import CustomAlert from '../components/CustomAlert';
 import { formatOrderId } from '../utils/formatters';
+import { buildInvoiceHtml } from '../utils/invoiceTemplate';
 
 const STATUS_COLORS = {
+  'Draft': { bg: '#F3F4F6', text: '#4B5563', border: '#9CA3AF' },
   'Pending': { bg: '#FFF3E0', text: '#E65100', border: '#FFB74D' },
   'In Progress': { bg: '#E3F2FD', text: '#1565C0', border: '#64B5F6' },
   'Ready': { bg: '#E8F5E9', text: '#2E7D32', border: '#81C784' },
@@ -217,7 +220,11 @@ export default function OrderDetails() {
       return;
     }
 
-    const newTotal = (order.billing.totalPaid || 0) + amount;
+    const previousPaid = Math.max(
+      order.billing?.totalPaid || 0,
+      order.billing?.advancePaid || 0,
+    );
+    const newTotal = previousPaid + amount;
     try {
       const res = await axios.put(`${API_ENDPOINTS.ORDERS}/billing`, {
         orderId: id, totalPaid: newTotal
@@ -267,6 +274,16 @@ export default function OrderDetails() {
     }
   };
 
+  const handleConfirmDraft = async () => {
+    try {
+      const response = await axios.put(`${API_ENDPOINTS.ORDERS}/${id}/status`, { status: 'Pending' });
+      setOrder(response.data);
+      showAlert('success', 'Order Confirmed', 'This draft is now a pending production order.');
+    } catch (error) {
+      showAlert('error', 'Error', 'Failed to confirm this draft.');
+    }
+  };
+
   const handleDirectWhatsApp = async () => {
     try {
       const type = isEstimateInvoice ? 'estimate' : 'final';
@@ -303,6 +320,15 @@ export default function OrderDetails() {
     }
   };
 
+  const fetchImageAsDataUri = async (imageUrl) => {
+    const fileUri = `${FileSystem.cacheDirectory}payment-qr-${Date.now()}.png`;
+    await FileSystem.downloadAsync(imageUrl, fileUri);
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return `data:image/png;base64,${base64}`;
+  };
+
   const generateAndSharePDF = async (isEstimate = false) => {
     try {
       const title = isEstimate ? "ESTIMATE INVOICE" : "FINAL INVOICE";
@@ -324,16 +350,18 @@ export default function OrderDetails() {
       }
 
       let qrCodeHtml = '';
+      let qrDataUri = '';
       if (balanceDue > 0) {
         const upiId = 'sathyaatamilselvan-1@oksbi'; 
         const upiName = 'Sathyaa Tamilselvan';
         const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${balanceDue}&cu=INR`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
+        const qrUrl = `https://quickchart.io/qr?format=png&size=300&text=${encodeURIComponent(upiUrl)}`;
+        qrDataUri = await fetchImageAsDataUri(qrUrl);
         
         qrCodeHtml = `
           <div style="margin-top: 30px; float: left; text-align: center; border: 1px dashed #5959be; padding: 15px; border-radius: 8px; background-color: #fcfcff;">
             <p style="margin: 0 0 10px 0; font-weight: bold; color: #5959be;">Scan to Pay Balance</p>
-            <img src="${qrUrl}" width="120" height="120" alt="UPI QR Code" />
+            <img src="${qrDataUri}" width="120" height="120" alt="UPI QR Code" />
             <p style="margin: 8px 0 8px 0; font-size: 15px; font-weight: bold;">₹${balanceDue.toLocaleString('en-IN')}</p>
             <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
               <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Google_Pay_Logo.svg/120px-Google_Pay_Logo.svg.png" height="14" alt="GPay" />
@@ -344,7 +372,14 @@ export default function OrderDetails() {
         `;
       }
       
-      const html = `
+      const html = buildInvoiceHtml({
+        invoiceType: isEstimate ? 'estimate' : 'final',
+        customer: order.customer,
+        orders: [order],
+        qrDataUri,
+      });
+
+      const legacyHtml = `
         <html>
           <head>
             <style>
@@ -416,6 +451,7 @@ export default function OrderDetails() {
         </html>
       `;
       
+      void legacyHtml;
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
     } catch (e) {
@@ -478,8 +514,8 @@ export default function OrderDetails() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Details</Text>
         <View>
-          {user?.role === 'owner' && (
-            <TouchableOpacity onPress={handleDeleteOrder}>
+          {(user?.role === 'owner' || user?.role === 'admin') && (
+            <TouchableOpacity onPress={handleDeleteOrder} style={styles.headerIcon}>
               <Trash2 size={24} color={'#ffffffff'} />
             </TouchableOpacity>
           )}
@@ -521,7 +557,14 @@ export default function OrderDetails() {
         {/* Order Info Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Order Info</Text>
+          {order.status === 'Draft' && (user?.role === 'owner' || user?.role === 'admin') && (
+            <TouchableOpacity style={styles.confirmDraftButton} onPress={handleConfirmDraft}>
+              <CheckCircle size={18} color={Colors.white} />
+              <Text style={styles.confirmDraftButtonText}>Confirm Draft</Text>
+            </TouchableOpacity>
+          )}
           <InfoRow label="Order ID" value={formatOrderId(order.orderId)} />
+          <InfoRow label="Created Date" value={new Date(order.createdAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'})} />
           <InfoRow label="Due Date" value={new Date(order.deliveryDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} />
           {order.createdBy && <InfoRow label="Created By" value={`${order.createdBy.name} (${order.createdBy.role === 'owner' ? 'Owner' : 'Admin'})`} />}
           <InfoRow label="Category" value={order.category} />
@@ -633,38 +676,42 @@ export default function OrderDetails() {
           </View>
           
           {(user?.role === 'owner' || user?.role === 'admin') && (
-            <View style={{flexDirection: 'row', gap: Spacing.sm}}>
-              <TouchableOpacity 
-                style={[styles.recordPaymentBtn, {flex: 1}, order.billing?.paymentStatus === 'Paid' && {opacity: 0.5}]} 
-                onPress={() => {
-                  if (order.billing?.paymentStatus === 'Paid') {
-                    showAlert('info', 'Fully Paid', 'This order is already fully paid.');
-                    return;
-                  }
-                  setPaymentModalVisible(true);
-                }}
-                disabled={order.billing?.paymentStatus === 'Paid'}
-              >
-                <CreditCard size={18} color={Colors.white} />
-                <Text style={styles.recordPaymentText}>{order.billing?.paymentStatus === 'Paid' ? 'Fully Paid' : 'Record Pay'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: Colors.secondary}]} onPress={() => setEditBillModalVisible(true)}>
-                <Edit3 size={18} color={Colors.white} />
-                <Text style={styles.recordPaymentText}>Edit Bill</Text>
-              </TouchableOpacity>
-            </View>
+            <>
+              <View style={{flexDirection: 'row', gap: Spacing.sm}}>
+                <TouchableOpacity 
+                  style={[styles.recordPaymentBtn, {flex: 1}, order.billing?.paymentStatus === 'Paid' && {opacity: 0.5}]} 
+                  onPress={() => {
+                    if (order.billing?.paymentStatus === 'Paid') {
+                      showAlert('info', 'Fully Paid', 'This order is already fully paid.');
+                      return;
+                    }
+                    setPaymentModalVisible(true);
+                  }}
+                  disabled={order.billing?.paymentStatus === 'Paid'}
+                >
+                  <CreditCard size={18} color={Colors.white} />
+                  <Text style={styles.recordPaymentText}>{order.billing?.paymentStatus === 'Paid' ? 'Fully Paid' : 'Record Pay'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: Colors.secondary}]} onPress={() => setEditBillModalVisible(true)}>
+                  <Edit3 size={18} color={Colors.white} />
+                  <Text style={styles.recordPaymentText}>Edit Bill</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.invoiceBtnRow}>
+                <TouchableOpacity style={styles.invoiceBtn} onPress={() => handleOpenInvoiceModal(true)}>
+                  <FileText size={16} color={Colors.primary} />
+                  <Text style={styles.invoiceBtnText}>Estimate Bill</Text>
+                </TouchableOpacity>
+                {((order.status === 'Delivered') || (order.workflow?.length > 0 && order.workflow.every(step => step.status === 'Completed'))) && (
+                  <TouchableOpacity style={[styles.invoiceBtn, {backgroundColor: Colors.primary}]} onPress={() => handleOpenInvoiceModal(false)}>
+                    <MessageCircle size={16} color={Colors.white} />
+                    <Text style={[styles.invoiceBtnText, {color: Colors.white}]}>Final Bill</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
           )}
 
-          <View style={styles.invoiceBtnRow}>
-            <TouchableOpacity style={styles.invoiceBtn} onPress={() => handleOpenInvoiceModal(true)}>
-              <FileText size={16} color={Colors.primary} />
-              <Text style={styles.invoiceBtnText}>Estimate Bill</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.invoiceBtn, {backgroundColor: Colors.primary}]} onPress={() => handleOpenInvoiceModal(false)}>
-              <MessageCircle size={16} color={Colors.white} />
-              <Text style={[styles.invoiceBtnText, {color: Colors.white}]}>Final Bill</Text>
-            </TouchableOpacity>
-          </View>
         </View>
         )}
 
@@ -1036,6 +1083,8 @@ const styles = StyleSheet.create({
 
   card: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.lg, ...Shadows.sm, marginBottom: Spacing.md },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.primary, marginBottom: Spacing.sm },
+  confirmDraftButton: { height: 44, backgroundColor: Colors.primary, borderRadius: BorderRadius.md, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: Spacing.md },
+  confirmDraftButtonText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
 
   profileRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },

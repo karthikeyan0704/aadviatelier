@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { User, Phone, Lock, Save, ArrowLeft, Camera } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import SuccessModal from '../components/SuccessModal';
 
 export default function Profile() {
-  const { user, updateUserSession, token } = useAuth();
+  const { user, updateUserSession, authenticatedFetch } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [mobileNumber, setMobileNumber] = useState(user?.mobileNumber || '');
   const [role, setRole] = useState(user?.role || '');
@@ -119,11 +119,10 @@ export default function Profile() {
         payload.removeProfilePicture = 'true';
       }
 
-      const res = await fetch(API_ENDPOINTS.PROFILE, {
+      const res = await authenticatedFetch(API_ENDPOINTS.PROFILE, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });

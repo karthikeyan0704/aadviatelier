@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
-import { Scissors, CheckCircle, Clock, User } from 'lucide-react-native';
+import { Scissors, CheckCircle, Clock, User, Plus } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 
@@ -122,6 +122,11 @@ export default function StaffDashboard() {
         </View>
       </View>
 
+      <TouchableOpacity style={styles.createOrderButton} onPress={() => router.push('/create-order')}>
+        <Plus size={20} color={Colors.white} />
+        <Text style={styles.createOrderButtonText}>Create New Order</Text>
+      </TouchableOpacity>
+
       <Text style={styles.sectionTitle}>My Assigned Orders</Text>
 
       <FlatList
@@ -151,10 +156,12 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, backgroundColor: Colors.white, padding: Spacing.lg, borderRadius: BorderRadius.lg, ...Shadows.sm, alignItems: 'center' },
   statNumber: { fontSize: 24, fontWeight: 'bold', color: Colors.text, marginVertical: 8 },
   statLabel: { fontSize: 13, color: Colors.textSecondary },
+  createOrderButton: { marginHorizontal: Spacing.lg, marginTop: Spacing.lg, height: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, ...Shadows.sm },
+  createOrderButtonText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
 
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text, paddingHorizontal: Spacing.lg, marginTop: Spacing.xl, marginBottom: Spacing.md },
   
-  listContent: { padding: Spacing.lg, paddingTop: 0 },
+  listContent: { padding: Spacing.lg, paddingTop: 0, paddingBottom: 90 },
   orderCard: { backgroundColor: Colors.white, padding: Spacing.md, borderRadius: BorderRadius.md, marginBottom: Spacing.md, ...Shadows.sm },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   orderId: { fontWeight: 'bold', color: Colors.primary },

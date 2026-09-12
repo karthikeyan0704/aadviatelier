@@ -9,14 +9,15 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  RefreshControl
+  RefreshControl,
+  TextInput
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { Colors, Spacing, Shadows, BorderRadius } from '../constants/theme';
-import { ArrowLeft, Phone } from 'lucide-react-native';
+import { ArrowLeft, Phone, Search, Calendar, ChevronRight } from 'lucide-react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export default function ViewOrder() {
@@ -26,6 +27,7 @@ export default function ViewOrder() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [orderSearch, setOrderSearch] = useState('');
 
   useEffect(() => {
     fetchCustomerDetails();
@@ -80,6 +82,30 @@ export default function ViewOrder() {
   const { customer, orders } = data || { customer: {}, orders: [] };
 
   const isStaff = user?.role === 'cutting_master' || user?.role === 'stitching_master';
+  const visibleOrders = isStaff && orderSearch.trim()
+    ? orders.filter(order => order.orderId?.toLowerCase().includes(orderSearch.trim().toLowerCase()))
+    : orders;
+
+  const getStatusStyle = (status) => {
+    if (status === 'Delivered' || status === 'Completed') {
+      return { backgroundColor: '#DDF5E9', color: '#14864A' };
+    }
+    if (status === 'In Progress') {
+      return { backgroundColor: '#FFF0C9', color: '#9A6500' };
+    }
+    return { backgroundColor: '#FFE2E7', color: '#C51F4B' };
+  };
+
+  const getOrderDate = (order) => {
+    const date = order.deliveryDate || order.createdAt;
+    return date ? new Date(date).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    }) : '';
+  };
+
+  const getInitial = (name) => name?.trim()?.charAt(0)?.toUpperCase() || '?';
 
   const renderOrderRow = ({ item }) => (
     <TouchableOpacity 
@@ -87,12 +113,41 @@ export default function ViewOrder() {
       onPress={() => router.push({ pathname: '/order-details', params: { id: item._id } })}
     >
       <Text style={[styles.cellText, {flex: 1.2}]} numberOfLines={1}>{customer.name}</Text>
-      <Text style={[styles.cellText, {flex: 1.5, textAlign: 'center'}]} numberOfLines={1}>{item.orderId ? item.orderId.split('-').pop() : item._id.substring(item._id.length - 4)}</Text>
+      <Text style={[styles.cellText, {flex: 1.5, textAlign: 'center'}]} numberOfLines={1}>{item.orderId || item._id}</Text>
       {!isStaff && (
         <Text style={[styles.cellText, {flex: 1, textAlign: 'right'}]} numberOfLines={1}>₹{item.billing?.estimatedCost || 0}</Text>
       )}
     </TouchableOpacity>
   );
+
+  const renderMasterOrderRow = ({ item }) => {
+    const statusStyle = getStatusStyle(item.status);
+
+    return (
+      <TouchableOpacity
+        style={styles.masterOrderRow}
+        onPress={() => router.push({ pathname: '/order-details', params: { id: item._id } })}
+      >
+        <View style={styles.masterAvatar}>
+          <Text style={styles.masterAvatarText}>{getInitial(customer.name)}</Text>
+        </View>
+        <View style={styles.masterOrderInfo}>
+          <Text style={styles.masterCustomerName} numberOfLines={1}>{customer.name}</Text>
+          <View style={styles.masterDateRow}>
+            <Calendar size={16} color={Colors.textSecondary} />
+            <Text style={styles.masterDate}>{getOrderDate(item)}</Text>
+          </View>
+        </View>
+        <View style={styles.masterOrderMeta}>
+          <Text style={styles.masterOrderId} numberOfLines={2}>{item.orderId || item._id}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
+            <Text style={[styles.statusText, { color: statusStyle.color }]}>{item.status || 'Pending'}</Text>
+          </View>
+        </View>
+        <ChevronRight size={24} color={Colors.primary} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -125,10 +180,24 @@ export default function ViewOrder() {
 
       {/* Table Card */}
       <View style={styles.tableCard}>
+        {isStaff && (
+          <View style={styles.searchBar}>
+            <Search size={24} color={Colors.textSecondary} />
+            <TextInput
+              style={styles.orderSearch}
+              placeholder="Search full order number"
+              placeholderTextColor={Colors.textSecondary}
+              value={orderSearch}
+              onChangeText={setOrderSearch}
+              autoCapitalize="none"
+            />
+          </View>
+        )}
+
         {/* Blue Header Bar */}
-        <View style={styles.tableHeaderBar}>
-          <Text style={[styles.tableHeaderText, {flex: 1.2}]}>Customer Name</Text>
-          <Text style={[styles.tableHeaderText, {flex: 1.5, textAlign: 'center'}]}>Order No</Text>
+        <View style={[styles.tableHeaderBar, isStaff && styles.masterTableHeaderBar]}>
+          <Text style={[styles.tableHeaderText, isStaff && styles.masterTableHeaderText, {flex: 1.2}]}>Customer Name</Text>
+          <Text style={[styles.tableHeaderText, isStaff && styles.masterTableHeaderText, {flex: 1.5, textAlign: 'center'}]}>Order No</Text>
           {!isStaff && (
             <Text style={[styles.tableHeaderText, {flex: 1, textAlign: 'right'}]}>Amount</Text>
           )}
@@ -137,10 +206,16 @@ export default function ViewOrder() {
         {/* Order List */}
         <FlatList
           style={{ flex: 1 }}
-          data={orders}
-          renderItem={renderOrderRow}
+          data={visibleOrders}
+          renderItem={isStaff ? renderMasterOrderRow : renderOrderRow}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 20 }]}
+          scrollEnabled={true}
+          nestedScrollEnabled={true}
+          contentContainerStyle={[
+            styles.listContent,
+            isStaff && styles.masterListContent,
+            { paddingBottom: 20 }
+          ]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
           ListEmptyComponent={
@@ -199,12 +274,37 @@ const styles = StyleSheet.create({
     flex: 1
   },
 
+  orderSearch: {
+    flex: 1,
+    paddingHorizontal: 12,
+    height: 44,
+    color: Colors.text,
+    fontSize: 16
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: Spacing.md,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E3E6F5',
+    borderRadius: 16,
+    backgroundColor: '#F7F7FF',
+    overflow: 'hidden'
+  },
+
   tableHeaderBar: {
     flexDirection: 'row',
     backgroundColor: Colors.primary, // Using theme color instead of hardcoded
     paddingVertical: 12,
     paddingHorizontal: Spacing.md,
     alignItems: 'center'
+  },
+  masterTableHeaderBar: {
+    marginHorizontal: 10,
+    borderRadius: 14,
+    paddingVertical: 14
   },
   tableHeaderText: {
     color: Colors.white,
@@ -215,6 +315,9 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1
   },
+  masterListContent: {
+    flexGrow: 0
+  },
   tableRow: {
     flexDirection: 'row',
     paddingVertical: 16,
@@ -223,6 +326,39 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
     alignItems: 'center'
   },
+  masterOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 118,
+    marginHorizontal: 10,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#E8EAF4',
+    ...Shadows.sm
+  },
+  masterAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E8F0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14
+  },
+  masterAvatarText: { fontSize: 24, fontWeight: 'bold', color: '#1769E0' },
+  masterOrderInfo: { flex: 1, minWidth: 0, marginRight: 5 },
+  masterCustomerName: { fontSize: 19, fontWeight: 'bold', color: '#111A42' },
+  masterDateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 9, gap: 7, flexShrink: 0 },
+  masterDate: { fontSize: 13, color: Colors.textSecondary, flexShrink: 0 },
+  masterOrderMeta: { width: 135, marginLeft: 5, flexShrink: 0 },
+  masterOrderId: { fontSize: 14, lineHeight: 18, fontWeight: 'bold', color: '#111A42', textAlign: 'right', flexShrink: 1 },
+  masterTableHeaderText: { fontSize: 16 },
+  statusBadge: { alignSelf: 'flex-end', marginTop: 7, paddingHorizontal: 13, paddingVertical: 6, borderRadius: 18, maxWidth: '100%' },
+  statusText: { fontSize: 14, fontWeight: 'bold' },
   cellText: {
     fontSize: 14,
     color: Colors.text

@@ -10,23 +10,28 @@ import {
   ScrollView,
   TextInput,
   Linking,
-  Modal
+  Modal,
+  Alert,
+  DeviceEventEmitter
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../constants/ApiConfig';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
-import { Search, ChevronRight, Share2, MessageCircle, FileText, X } from 'lucide-react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { Search, ChevronRight, Share2, MessageCircle, FileText, X, Trash2 } from 'lucide-react-native';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import { formatOrderId } from '../../utils/formatters';
+import ConfirmModal from '../../components/ConfirmModal';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { buildInvoiceHtml } from '../../utils/invoiceTemplate';
 
 const TABS = ['Active', 'Past Due', 'Upcoming', 'Pending Amount', 'Delivered', 'Draft'];
 
 export default function OrdersScreen() {
   const router = useRouter();
+  const { overview } = useLocalSearchParams();
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +40,15 @@ export default function OrdersScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({});
-  const [shareModal, setShareModal] = useState({ visible: false, group: null });
+  const [shareModal, setShareModal] = useState({ visible: false, group: null, invoiceType: null });
+  const [detailGroup, setDetailGroup] = useState(null);
+  const [deleteGroup, setDeleteGroup] = useState(null);
+
+  useEffect(() => {
+    if (overview) {
+      setActiveTab(overview === 'completed' ? 'Delivered' : overview === 'payment-pending' ? 'Pending Amount' : overview === 'overdue' ? 'Past Due' : overview === 'draft' ? 'Draft' : 'Active');
+    }
+  }, [overview]);
 
   const toggleGroup = (groupId) => {
     setExpandedGroups(prev => ({
@@ -69,13 +82,25 @@ export default function OrdersScreen() {
     fetchOrders();
   }, []);
 
+  const isOverdue = (order) => {
+    if (!order.deliveryDate || order.status === 'Delivered' || order.status === 'Draft') return false;
+
+    const deliveryDate = new Date(order.deliveryDate);
+    deliveryDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const workflowComplete = order.workflow?.length > 0 && order.workflow.every(step => step.status === 'Completed');
+
+    return deliveryDate.getTime() < today.getTime() && !workflowComplete;
+  };
+
   const getCounts = () => {
     const today = new Date();
     today.setHours(0,0,0,0);
 
     return {
       'Active': orders.filter(o => o.status !== 'Delivered' && o.status !== 'Draft').length,
-      'Past Due': orders.filter(o => o.status !== 'Delivered' && new Date(o.deliveryDate).setHours(0,0,0,0) < today.getTime()).length,
+      'Past Due': orders.filter(isOverdue).length,
       'Upcoming': orders.filter(o => o.status !== 'Delivered' && new Date(o.deliveryDate).setHours(0,0,0,0) >= today.getTime()).length,
       'Pending Amount': orders.filter(o => o.billing?.balanceDue > 0).length,
       'Delivered': orders.filter(o => o.status === 'Delivered').length,
@@ -98,7 +123,7 @@ export default function OrdersScreen() {
       let matchesTab = true;
       switch(activeTab) {
         case 'Active': matchesTab = !isDelivered && !isDraft; break;
-        case 'Past Due': matchesTab = !isDelivered && deliveryDate.getTime() < today.getTime(); break;
+        case 'Past Due': matchesTab = isOverdue(order); break;
         case 'Upcoming': matchesTab = !isDelivered && deliveryDate.getTime() >= today.getTime(); break;
         case 'Pending Amount': matchesTab = order.billing?.balanceDue > 0; break;
         case 'Delivered': matchesTab = isDelivered; break;
@@ -106,6 +131,19 @@ export default function OrdersScreen() {
       }
 
       if (!matchesTab) return false;
+
+      const matchesOverview = {
+        'today-deliveries': order.deliveryDate && deliveryDate.getTime() === today.getTime(),
+        pending: order.status === 'Pending',
+        'under-stitching': order.workflow?.some(step => step.step === 'Cutting' && step.status === 'Completed') && order.workflow?.some(step => step.step === 'Stitching' && step.status === 'Pending'),
+        'aari-pending': order.workflow?.some(step => step.step === 'Aari Work / Embroidery' && step.status === 'Pending'),
+        completed: order.status === 'Delivered',
+        overdue: isOverdue(order),
+        draft: order.status === 'Draft',
+        'payment-pending': order.billing?.balanceDue > 0,
+      };
+
+      if (overview && !matchesOverview[overview]) return false;
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -121,7 +159,35 @@ export default function OrdersScreen() {
     });
   };
 
-  const generateGroupPDF = async (group) => {
+  const isOrderComplete = (order) => (
+    order.status === 'Delivered' ||
+    (order.workflow?.length > 0 && order.workflow.every(step => step.status === 'Completed'))
+  );
+
+  const isGroupComplete = (group) => group.orders.every(isOrderComplete);
+
+  const fetchImageAsDataUri = async (imageUrl) => {
+    const fileUri = `${FileSystem.cacheDirectory}payment-qr-${Date.now()}.png`;
+    await FileSystem.downloadAsync(imageUrl, fileUri);
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return `data:image/png;base64,${base64}`;
+  };
+
+  const getOrderDayKey = (order) => {
+    const date = order.createdAt || order.orderId?.split('-')[1];
+    if (!date) return 'unknown';
+    if (/^\d{8}$/.test(date)) return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    const parsedDate = new Date(date);
+    return Number.isNaN(parsedDate.getTime()) ? 'unknown' : parsedDate.toISOString().slice(0, 10);
+  };
+
+  const formatGroupDate = (dateKey) => dateKey === 'unknown'
+    ? 'Unknown date'
+    : new Date(`${dateKey}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const generateGroupPDF = async (group, invoiceType) => {
     try {
       const customer = group.orders[0].customer;
       const grandTotal = group.totalAmount;
@@ -130,17 +196,19 @@ export default function OrdersScreen() {
       const date = new Date().toLocaleDateString('en-GB');
 
       let qrCodeHtml = '';
+      let qrDataUri = '';
       if (balanceDue > 0) {
         // IMPORTANT: Update this UPI ID to your actual business UPI ID
         const upiId = 'sathyaatamilselvan-1@oksbi'; 
         const upiName = 'Sathyaa Tamilselvan';
         const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${balanceDue}&cu=INR`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
+        const qrUrl = `https://quickchart.io/qr?format=png&size=300&text=${encodeURIComponent(upiUrl)}`;
+        qrDataUri = await fetchImageAsDataUri(qrUrl);
         
         qrCodeHtml = `
           <div style="margin-top: 30px; float: left; text-align: center; border: 1px dashed #5959be; padding: 15px; border-radius: 8px; background-color: #fcfcff;">
             <p style="margin: 0 0 10px 0; font-weight: bold; color: #5959be;">Scan to Pay Balance</p>
-            <img src="${qrUrl}" width="120" height="120" alt="UPI QR Code" />
+            <img src="${qrDataUri}" width="120" height="120" alt="UPI QR Code" />
             <p style="margin: 8px 0 8px 0; font-size: 15px; font-weight: bold;">₹${balanceDue.toLocaleString('en-IN')}</p>
             <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
               <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Google_Pay_Logo.svg/120px-Google_Pay_Logo.svg.png" height="14" alt="GPay" />
@@ -166,7 +234,14 @@ export default function OrdersScreen() {
         </tr>
       `}).join('');
       
-      const html = `
+      const html = buildInvoiceHtml({
+        invoiceType,
+        customer,
+        orders: group.orders,
+        qrDataUri,
+      });
+
+      const legacyHtml = `
         <html>
           <head>
             <style>
@@ -188,11 +263,12 @@ export default function OrdersScreen() {
           <body>
             <div class="header">
               <h1>Aadvi Designer Studio</h1>
-              <div class="title">MASTER INVOICE</div>
+              <div class="title">${invoiceType === 'final' ? 'FINAL INVOICE' : 'ESTIMATE INVOICE'}</div>
             </div>
             
             <div class="row">
-              <div><span class="label">Date:</span> ${date}</div>
+              <div><span class="label">Order Date:</span> ${formatGroupDate(group.dateKey)}</div>
+              <div><span class="label">Generated:</span> ${date}</div>
             </div>
             
             <div class="row">
@@ -232,8 +308,9 @@ export default function OrdersScreen() {
         </html>
       `;
       
+      void legacyHtml;
       const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Master Invoice' });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice' });
     } catch (e) {
       console.log(e);
       Alert.alert('Error', `Failed to generate PDF: ${e.message}`);
@@ -241,16 +318,65 @@ export default function OrdersScreen() {
   };
 
   const sendGroupInvoice = async (group) => {
-    setShareModal({ visible: true, group });
+    setShareModal({ visible: true, group, invoiceType: null });
+  };
+
+  const closeShareModal = () => {
+    setShareModal({ visible: false, group: null, invoiceType: null });
+  };
+
+  const handleDeleteGroup = (group) => {
+    const orderCount = group.orders.length;
+    setDeleteGroup({ group, orderCount });
+  };
+
+  const confirmDeleteGroup = async () => {
+    const group = deleteGroup?.group;
+    if (!group) return;
+
+    setDeleteGroup(null);
+    try {
+      await Promise.all(group.orders.map(order => axios.delete(`${API_ENDPOINTS.ORDERS}/${order._id}`)));
+      setDetailGroup(null);
+      DeviceEventEmitter.emit('ordersChanged');
+      fetchOrders();
+    } catch (error) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to delete all orders.');
+    }
   };
 
   const getGroupedOrders = () => {
     const filtered = getFilteredOrders();
+
+    if (user?.role === 'cutting_master' || user?.role === 'stitching_master') {
+      const customerGroups = {};
+
+      filtered.forEach(order => {
+        const customerId = order.customer?._id || order.customer?.name || 'unknown';
+        if (!customerGroups[customerId]) {
+          customerGroups[customerId] = {
+            id: `staff_${customerId}`,
+            customerId: order.customer?._id,
+            customerName: order.customer?.name || 'Unknown',
+            orders: []
+          };
+        }
+        customerGroups[customerId].orders.push(order);
+      });
+
+      return Object.values(customerGroups)
+        .sort((a, b) => {
+          const dateA = a.orders[0]?.createdAt ? new Date(a.orders[0].createdAt).getTime() : 0;
+          const dateB = b.orders[0]?.createdAt ? new Date(b.orders[0].createdAt).getTime() : 0;
+          return dateB - dateA;
+        })
+        .map(group => ({ type: 'staffCustomer', id: group.id, data: group }));
+    }
+
     const groups = {};
     
     filtered.forEach(order => {
-      const parts = order.orderId ? order.orderId.split('-') : [];
-      const datePart = parts.length >= 2 ? parts[1] : (order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'unknown');
+      const datePart = getOrderDayKey(order);
       const customerId = order.customer?._id || 'unknown';
       const key = `${customerId}_${datePart}`;
       
@@ -259,6 +385,7 @@ export default function OrdersScreen() {
           id: key,
           customerName: order.customer?.name || 'Unknown',
           datePart: datePart,
+          dateKey: datePart,
           orders: [],
           totalAmount: 0
         };
@@ -295,7 +422,78 @@ export default function OrdersScreen() {
   const isStaff = user?.role === 'cutting_master' || user?.role === 'stitching_master';
   const visibleTabs = isStaff ? TABS.filter(t => t !== 'Pending Amount') : TABS;
 
+  const getStatusMeta = (status) => {
+    switch (status) {
+      case 'Delivered':
+        return { label: 'Completed', backgroundColor: '#DCFCE7', color: '#15803D' };
+      case 'Overdue':
+        return { label: 'Overdue', backgroundColor: '#FEE2E2', color: '#B91C1C' };
+      case 'Ready':
+        return { label: 'Ready', backgroundColor: '#DBEAFE', color: '#1D4ED8' };
+      case 'In Progress':
+        return { label: 'Processing', backgroundColor: '#FEF3C7', color: '#B45309' };
+      case 'Draft':
+        return { label: 'Draft', backgroundColor: '#E5E7EB', color: '#4B5563' };
+      case 'Mixed':
+        return { label: 'Mixed', backgroundColor: '#EDE9FE', color: '#6D28D9' };
+      default:
+        return { label: 'Pending', backgroundColor: '#FEE2E2', color: '#B91C1C' };
+    }
+  };
+
+  const StatusBadge = ({ status }) => {
+    const meta = getStatusMeta(status);
+    return (
+      <View style={[styles.statusBadge, { backgroundColor: meta.backgroundColor }]}>
+        <Text style={[styles.statusBadgeText, { color: meta.color }]}>{meta.label}</Text>
+      </View>
+    );
+  };
+
+  const getGroupStatus = (orders) => {
+    if (orders.some(isOverdue)) return 'Overdue';
+    const statuses = [...new Set(orders.map(order => order.status))];
+    return statuses.length === 1 ? statuses[0] : 'Mixed';
+  };
+
+  const AssignmentBadges = ({ order }) => {
+    const cuttingMaster = order.assignedTo?.cuttingMaster;
+    const stitchingMaster = order.assignedTo?.stitchingMaster;
+    const cuttingName = typeof cuttingMaster === 'object' ? cuttingMaster?.name : null;
+    const stitchingName = typeof stitchingMaster === 'object' ? stitchingMaster?.name : null;
+    if (!cuttingName && !stitchingName) return null;
+
+    return (
+      <View style={styles.assignmentBadges}>
+        {cuttingName && <Text style={[styles.assignmentBadge, styles.cuttingBadge]} numberOfLines={1}>Cut: {cuttingName}</Text>}
+        {stitchingName && <Text style={[styles.assignmentBadge, styles.stitchingBadge]} numberOfLines={1}>Stitch: {stitchingName}</Text>}
+      </View>
+    );
+  };
+
   const renderOrderItem = ({ item }) => {
+    if (item.type === 'staffCustomer') {
+      const group = item.data;
+      return (
+        <TouchableOpacity
+          style={[styles.tableRow, { backgroundColor: '#E8EDF2', borderColor: Colors.border }]}
+          onPress={() => router.push({ pathname: '/view-order', params: { customerId: group.customerId } })}
+        >
+          <View style={[styles.rowCol, {flex: 1.1}]}>
+            <Text style={[styles.cellText, {fontWeight: 'bold', color: Colors.primary}]} numberOfLines={1}>
+              {group.customerName}
+            </Text>
+          </View>
+          <View style={[styles.rowCol, {flex: 1.2}]}>
+            <Text style={[styles.cellText, {textAlign: 'center', color: Colors.primary, fontWeight: 'bold'}]} numberOfLines={1}>
+              {group.orders.length} {group.orders.length === 1 ? 'Order' : 'Orders'}
+            </Text>
+          </View>
+          <ChevronRight size={16} color={Colors.primary} style={{ marginTop: 15 }} />
+        </TouchableOpacity>
+      );
+    }
+
     if (item.type === 'single' || item.type === 'groupItem') {
       const order = item.data;
       const isNested = item.type === 'groupItem';
@@ -303,6 +501,13 @@ export default function OrdersScreen() {
         <TouchableOpacity 
           style={[styles.tableRow, isNested && { backgroundColor: '#F0F4F8', marginLeft: Spacing.xl, borderLeftWidth: 3, borderLeftColor: Colors.primary }]}
           onPress={() => router.push({ pathname: '/order-details', params: { id: order._id } })}
+          onLongPress={!isStaff ? () => setDetailGroup({
+            id: `single_${order._id}`,
+            customerName: order.customer?.name || 'Customer',
+            dateKey: getOrderDayKey(order),
+            orders: [order]
+          }) : undefined}
+          delayLongPress={450}
         >
           <View style={[styles.rowCol, {flex: 1.1}]}>
             <Text style={[styles.cellText, isNested && {fontSize: 13, color: Colors.textSecondary}]} numberOfLines={1}>
@@ -310,7 +515,9 @@ export default function OrdersScreen() {
             </Text>
           </View>
           <View style={[styles.rowCol, {flex: 1.2}]}>
-            <Text style={[styles.cellText, {textAlign: 'center'}, isNested && {fontSize: 13}]} numberOfLines={1}>{formatOrderId(order.orderId)}</Text>
+            <Text style={[styles.cellText, {textAlign: 'center'}, isNested && {fontSize: 13}]} numberOfLines={1}>{order.orderId}</Text>
+            {!isStaff && <StatusBadge status={isOverdue(order) ? 'Overdue' : order.status} />}
+            {!isStaff && <AssignmentBadges order={order} />}
           </View>
           {!isStaff && (
           <View style={[styles.rowCol, {flex: 1, borderRightWidth: 0, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center'}]}>
@@ -329,6 +536,8 @@ export default function OrdersScreen() {
         <TouchableOpacity 
           style={[styles.tableRow, { backgroundColor: '#E8EDF2', borderColor: Colors.border }]}
           onPress={() => toggleGroup(group.id)}
+          onLongPress={() => setDetailGroup(group)}
+          delayLongPress={450}
         >
           <View style={[styles.rowCol, {flex: 1.1}]}>
             <Text style={[styles.cellText, {fontWeight: 'bold', color: Colors.primary}]} numberOfLines={1}>{group.customerName}</Text>
@@ -337,6 +546,7 @@ export default function OrdersScreen() {
             <Text style={[styles.cellText, {textAlign: 'center', color: Colors.primary, fontSize: 13, fontWeight: 'bold'}]} numberOfLines={1}>
               {group.orders.length} Orders
             </Text>
+            <StatusBadge status={getGroupStatus(group.orders)} />
           </View>
           {!isStaff && (
           <View style={[styles.rowCol, {flex: 1, borderRightWidth: 0, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center'}]}>
@@ -391,7 +601,10 @@ export default function OrdersScreen() {
               <TouchableOpacity 
                 key={tab} 
                 style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => {
+                  router.setParams({ overview: undefined });
+                  setActiveTab(tab);
+                }}
               >
                 <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
                   {tab} ({counts[tab] || 0})
@@ -440,6 +653,62 @@ export default function OrdersScreen() {
         <ActivityIndicator style={styles.loader} size="large" color={Colors.primary} />
       )}
 
+      <Modal visible={Boolean(detailGroup)} transparent animationType="slide" onRequestClose={() => setDetailGroup(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.detailModalContent]}>
+            <View style={styles.modalHandle} />
+            <View style={styles.detailModalHeader}>
+              <View>
+                <Text style={styles.detailModalTitle}>{`${detailGroup?.customerName || 'Customer'}'s Orders`}</Text>
+                <Text style={styles.detailModalSubtitle}>
+                  {detailGroup ? `${detailGroup.orders.length} Orders • ${formatGroupDate(detailGroup.dateKey)}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setDetailGroup(null)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {detailGroup?.orders.map(order => (
+                <View key={order._id} style={styles.detailOrderRow}>
+                  <TouchableOpacity
+                    style={styles.detailOrderInfo}
+                    onPress={() => {
+                      setDetailGroup(null);
+                      router.push({ pathname: '/order-details', params: { id: order._id } });
+                    }}
+                  >
+                    <Text style={styles.detailOrderId}>{order.orderId}</Text>
+                    <Text style={styles.detailOrderDescription}>{order.category} - {order.dressType}</Text>
+                    <Text style={styles.detailOrderMeta}>Qty: {order.quantity || 1} • Due: {new Date(order.deliveryDate).toLocaleDateString('en-GB')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.deleteAllButton} onPress={() => handleDeleteGroup(detailGroup)}>
+              <Trash2 size={20} color={Colors.white} />
+              <Text style={styles.deleteAllButtonText}>
+                {detailGroup?.orders.length === 1 ? 'Delete Order' : `Delete All ${detailGroup?.orders.length || ''} Orders`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmModal
+        visible={Boolean(deleteGroup)}
+        title={deleteGroup?.orderCount === 1 ? 'Delete Order' : 'Delete All Orders'}
+        message={deleteGroup?.orderCount === 1
+          ? `Delete ${deleteGroup?.group.orders[0].orderId || 'this order'}? This cannot be undone.`
+          : `Delete all ${deleteGroup?.orderCount} orders for ${deleteGroup?.group.customerName} on ${formatGroupDate(deleteGroup?.group.dateKey)}? This cannot be undone.`}
+        onCancel={() => setDeleteGroup(null)}
+        onConfirm={confirmDeleteGroup}
+        confirmText={deleteGroup?.orderCount === 1 ? 'Delete Order' : 'Delete All'}
+        cancelText="Keep Orders"
+        isDestructive
+      />
+
       {/* Share Master Invoice Modal */}
       <Modal visible={shareModal.visible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -447,14 +716,37 @@ export default function OrdersScreen() {
             <View style={styles.modalHandle} />
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
               <Text style={{fontSize: 20, fontWeight: 'bold', color: Colors.text}}>
-                Share Master Invoice
+                {shareModal.invoiceType
+                  ? `${shareModal.invoiceType === 'final' ? 'Final' : 'Estimate'} Bill`
+                  : 'Choose Bill Type'}
               </Text>
-              <TouchableOpacity onPress={() => setShareModal({ visible: false, group: null })}>
+              <TouchableOpacity onPress={closeShareModal}>
                 <X size={24} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
+
+            {shareModal.group && !shareModal.invoiceType && (
+              <View style={{gap: 12, paddingBottom: 20}}>
+                <TouchableOpacity
+                  style={{flexDirection: 'row', height: 50, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center', gap: 8}}
+                  onPress={() => setShareModal(prev => ({ ...prev, invoiceType: 'estimate' }))}
+                >
+                  <FileText size={20} color={Colors.primary} />
+                  <Text style={{color: Colors.primary, fontWeight: 'bold', fontSize: 16}}>Estimate Bill</Text>
+                </TouchableOpacity>
+                {isGroupComplete(shareModal.group) && (
+                  <TouchableOpacity
+                    style={{backgroundColor: Colors.primary, flexDirection: 'row', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8}}
+                    onPress={() => setShareModal(prev => ({ ...prev, invoiceType: 'final' }))}
+                  >
+                    <MessageCircle size={20} color={Colors.white} />
+                    <Text style={{color: Colors.white, fontWeight: 'bold', fontSize: 16}}>Final Bill</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
             
-            {shareModal.group && (() => {
+            {shareModal.group && shareModal.invoiceType && (() => {
               const customer = shareModal.group.orders[0].customer;
               const grandTotal = shareModal.group.totalAmount;
               const totalAdvance = shareModal.group.orders.reduce((sum, item) => sum + (item.billing?.totalPaid || item.billing?.advancePaid || 0), 0);
@@ -463,6 +755,10 @@ export default function OrdersScreen() {
               return (
                 <View style={{backgroundColor: '#F8F9FA', padding: 15, borderRadius: 12, marginBottom: 25}}>
                   <Text style={{fontWeight: 'bold', fontSize: 16, marginBottom: 12, color: Colors.primary}}>{customer?.name || 'Customer'}</Text>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+                    <Text style={{color: Colors.textSecondary}}>Order Date</Text>
+                    <Text style={{fontWeight: '600', color: Colors.text}}>{formatGroupDate(shareModal.group.dateKey)}</Text>
+                  </View>
                   
                   <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
                     <Text style={{color: Colors.textSecondary}}>Orders Included</Text>
@@ -498,7 +794,8 @@ export default function OrdersScreen() {
                     const totalAdvance = group.orders.reduce((sum, item) => sum + (item.billing?.totalPaid || item.billing?.advancePaid || 0), 0);
                     const balanceDue = Math.max(grandTotal - totalAdvance, 0);
 
-                    const message = `*Aadvi Designer Studio*\n🧾 *MASTER INVOICE*\n\n*Customer:* ${customer?.name || 'Customer'}\n\n*Items Ordered:*\n${itemsList}\n\n*Billing Summary:*\nGrand Total: ₹${grandTotal}\nTotal Paid: ₹${totalAdvance}\n*Balance Due:* ₹${balanceDue}\n\nThank you for choosing Aadvi Designer Studio! 🙏`;
+                    const invoiceTitle = shareModal.invoiceType === 'final' ? 'FINAL BILL' : 'ESTIMATE BILL';
+                    const message = `*Aadvi Designer Studio*\n🧾 *${invoiceTitle}*\n\n*Customer:* ${customer?.name || 'Customer'}\n*Order Date:* ${formatGroupDate(group.dateKey)}\n*Orders Included:* ${group.orders.length}\n\n*Items Ordered:*\n${itemsList}\n\n*Billing Summary:*\nGrand Total: ₹${grandTotal}\nTotal Paid: ₹${totalAdvance}\n*Balance Due:* ₹${balanceDue}\n\nThank you for choosing Aadvi Designer Studio! 🙏`;
                     
                     const encodedMessage = encodeURIComponent(message);
                     const link = `https://wa.me/91${(customer?.mobileNumber || '').replace(/\D/g, '')}?text=${encodedMessage}`;
@@ -509,7 +806,7 @@ export default function OrdersScreen() {
                   } catch (err) {
                     console.error(err);
                   }
-                  setShareModal({ visible: false, group: null });
+                  closeShareModal();
                 }}
               >
                  <MessageCircle size={20} color="#fff" />
@@ -519,8 +816,8 @@ export default function OrdersScreen() {
               <TouchableOpacity 
                 style={{flexDirection: 'row', height: 50, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center', gap: 8}} 
                 onPress={() => {
-                  if (shareModal.group) generateGroupPDF(shareModal.group);
-                  setShareModal({ visible: false, group: null });
+                  if (shareModal.group) generateGroupPDF(shareModal.group, shareModal.invoiceType);
+                  closeShareModal();
                 }}
               >
                  <FileText size={20} color={Colors.primary} />
@@ -573,7 +870,8 @@ const styles = StyleSheet.create({
   tabsContainer: {
     paddingHorizontal: Spacing.md,
     paddingBottom: 0,
-    gap: Spacing.md
+    gap: Spacing.md,
+    
   },
   tabBtn: {
     paddingVertical: 12,
@@ -618,7 +916,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
 
-  listContent: { flexGrow: 1, paddingBottom: 10 },
+  listContent: { flexGrow: 1, paddingBottom: 90 },
   tableRow: {
     flexDirection: 'row',
     backgroundColor: '#FAFAFA',
@@ -639,6 +937,21 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontWeight: '500'
   },
+  statusBadge: {
+    alignSelf: 'center',
+    borderRadius: 10,
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  assignmentBadges: { alignItems: 'center', marginTop: 4, gap: 3 },
+  assignmentBadge: { maxWidth: '100%', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, fontSize: 9, fontWeight: '700' },
+  cuttingBadge: { backgroundColor: '#E0F2FE', color: '#0369A1' },
+  stitchingBadge: { backgroundColor: '#F3E8FF', color: '#7E22CE' },
   
   empty: { padding: Spacing.xl, alignItems: 'center', marginTop: 40 },
   emptyText: { color: Colors.text, fontSize: 16 },
@@ -654,6 +967,31 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     minHeight: '40%',
   },
+  detailModalContent: {
+    maxHeight: '75%',
+    padding: 24,
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+  },
+  detailModalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  detailModalSubtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
+  detailOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingVertical: 14,
+  },
+  detailOrderInfo: { flex: 1, paddingRight: 12 },
+  detailOrderId: { fontSize: 16, fontWeight: 'bold', color: Colors.primary },
+  detailOrderDescription: { fontSize: 15, color: Colors.text, marginTop: 4 },
+  detailOrderMeta: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
+  deleteAllButton: { flexDirection: 'row', height: 54, borderRadius: 16, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16 },
+  deleteAllButtonText: { color: Colors.white, fontSize: 17, fontWeight: 'bold' },
   modalHandle: {
     width: 40,
     height: 4,

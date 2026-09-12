@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: 'bold', color: Colors.textSecondary },
   tabTextActive: { color: Colors.primary },
 
-  scrollContent: { padding: Spacing.md },
+  scrollContent: { padding: Spacing.md, paddingBottom: 90 },
   emptyState: { alignItems: 'center', marginTop: 50 },
   emptyText: { fontSize: 18, color: '#777', fontWeight: 'bold' },
   
