@@ -53,6 +53,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@babel/helper-define-polyfill-provider": "^1.0.0",
     "@types/react": "~19.1.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "eslint": "^9.25.0",

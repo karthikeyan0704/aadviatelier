@@ -49,7 +49,9 @@ export default function NotificationsScreen() {
         console.log('Failed to mark notification as read', error);
       }
     }
-    if (notification.orderIds?.[0]) {
+    if (notification.type === 'overdue_order' || notification.type === 'overdue_task') {
+      router.push({ pathname: '/(tabs)/orders', params: { overview: 'overdue' } });
+    } else if (notification.orderIds?.[0]) {
       router.push({ pathname: '/order-details', params: { id: notification.orderIds[0] } });
     }
   };

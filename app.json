@@ -2,7 +2,7 @@
   "expo": {
     "name": "AadviAtelier",
     "slug": "aadvi-atelier",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/aalogo-v2.png",
     "scheme": "client",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.aadviatelier.app",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/aalogo-v2.png",
@@ -22,6 +22,10 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
+    },
+    "notification": {
+      "icon": "./assets/images/aalogo-v2.png",
+      "color": "#ffffff"
     },
     "web": {
       "output": "static",

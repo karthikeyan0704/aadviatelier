@@ -373,6 +373,15 @@ export default function OrdersScreen() {
         .map(group => ({ type: 'staffCustomer', id: group.id, data: group }));
     }
 
+    if (activeTab === 'Past Due') {
+      const sortedOverdue = [...filtered].sort((a, b) => {
+        const dateA = a.deliveryDate ? new Date(a.deliveryDate).getTime() : Infinity;
+        const dateB = b.deliveryDate ? new Date(b.deliveryDate).getTime() : Infinity;
+        return dateA - dateB;
+      });
+      return sortedOverdue.map(order => ({ type: 'single', id: order._id, data: order }));
+    }
+
     const groups = {};
     
     filtered.forEach(order => {
@@ -658,15 +667,18 @@ export default function OrdersScreen() {
           <View style={[styles.modalContent, styles.detailModalContent]}>
             <View style={styles.modalHandle} />
             <View style={styles.detailModalHeader}>
-              <View>
+              <TouchableOpacity 
+                onPress={() => setDetailGroup(null)} 
+                style={{ backgroundColor: 'transparent', marginRight: 16, padding: 4 }}
+              >
+                <X size={28} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.detailModalTitle}>{`${detailGroup?.customerName || 'Customer'}'s Orders`}</Text>
                 <Text style={styles.detailModalSubtitle}>
                   {detailGroup ? `${detailGroup.orders.length} Orders • ${formatGroupDate(detailGroup.dateKey)}` : ''}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setDetailGroup(null)}>
-                <X size={24} color={Colors.textSecondary} />
-              </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -714,15 +726,18 @@ export default function OrdersScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, {padding: 24}]}>
             <View style={styles.modalHandle} />
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
-              <Text style={{fontSize: 20, fontWeight: 'bold', color: Colors.text}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20}}>
+              <TouchableOpacity 
+                onPress={closeShareModal}
+                style={{ backgroundColor: 'transparent', marginRight: 16, padding: 4 }}
+              >
+                <X size={28} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={{fontSize: 20, fontWeight: 'bold', color: Colors.text, flex: 1}}>
                 {shareModal.invoiceType
                   ? `${shareModal.invoiceType === 'final' ? 'Final' : 'Estimate'} Bill`
                   : 'Choose Bill Type'}
               </Text>
-              <TouchableOpacity onPress={closeShareModal}>
-                <X size={24} color={Colors.textSecondary} />
-              </TouchableOpacity>
             </View>
 
             {shareModal.group && !shareModal.invoiceType && (
@@ -973,8 +988,7 @@ const styles = StyleSheet.create({
   },
   detailModalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 18,
   },
   detailModalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },

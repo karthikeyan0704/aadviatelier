@@ -52,7 +52,7 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          <SettingItem icon={Shield} title="Privacy & Security" />
+          <SettingItem icon={Shield} title="Privacy & Security" onPress={() => router.push('/privacy-security')} />
           <SettingItem icon={Bell} title="Notifications" onPress={() => router.push('/notifications')} />
         </View>
 
@@ -74,7 +74,7 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
-          <SettingItem icon={HelpCircle} title="Help Center" />
+          <SettingItem icon={HelpCircle} title="Help Center" onPress={() => router.push('/help-center')} />
           <SettingItem icon={LogOut} title="Logout" color={Colors.error} onPress={handleLogoutPress} />
         </View>
 

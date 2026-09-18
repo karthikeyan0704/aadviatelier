@@ -111,6 +111,26 @@ function RootLayoutNav() {
     }
   }, [token, loading, segments]);
 
+  // Handle notification taps
+  useEffect(() => {
+    if (!Notifications || !token) return;
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      const type = data?.type;
+
+      if (type === 'overdue_order' || type === 'overdue_task') {
+        // Open the Overdue Orders list, not a specific order
+        router.push({ pathname: '/(tabs)/orders', params: { overview: 'overdue' } });
+      } else if (data?.orderId) {
+        // All other notification types open specific order
+        router.push({ pathname: '/order-details', params: { id: data.orderId } });
+      }
+    });
+
+    return () => subscription.remove();
+  }, [token, router]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
