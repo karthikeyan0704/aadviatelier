@@ -5,6 +5,7 @@
   },
   "build": {
     "preview": {
+      "node": "22",
       "android": {
         "buildType": "apk"
       }
