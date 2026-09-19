@@ -2,8 +2,8 @@
   "name": "client",
   "main": "expo-router/entry",
   "version": "1.0.0",
-  "engines": {
-    "node": ">=22.18.0"
+  "overrides": {
+    "@babel/helper-compilation-targets": "^7.22.0"
   },
   "scripts": {
     "start": "expo start",
