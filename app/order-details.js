@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Linking, Image,
   TextInput, Modal, RefreshControl, Platform, KeyboardAvoidingView
 } from 'react-native';
+import ImageView from "react-native-image-viewing";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import axios from 'axios';
@@ -946,6 +947,21 @@ export default function OrderDetails() {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
+              {((order?.assignedTo?.cuttingMaster && assignType === 'cutting') || 
+                (order?.assignedTo?.stitchingMaster && assignType === 'stitching')) && (
+                <TouchableOpacity 
+                  style={{flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#FFF0F0', borderRadius: 10, marginBottom: 10}}
+                  onPress={() => handleAssign(null)}
+                >
+                  <View style={{width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.error+'20', justifyContent: 'center', alignItems: 'center', marginRight: 15}}>
+                    <X size={20} color={Colors.error} />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={{fontWeight: 'bold', fontSize: 16, color: Colors.error}}>Unassign Staff</Text>
+                    <Text style={{color: Colors.error, opacity: 0.7, fontSize: 13}}>Remove current assignment</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
               {staffList.filter(s => s.role === (assignType === 'cutting' ? 'cutting_master' : 'stitching_master')).map(staff => (
                 <TouchableOpacity 
                   key={staff._id} 
@@ -1016,17 +1032,14 @@ export default function OrderDetails() {
         onConfirm={customAlert.onConfirm}
         onDismiss={dismissAlert}
       />
-      <Modal visible={imageViewerModalVisible} transparent={true} animationType="fade" onRequestClose={() => setImageViewerModalVisible(false)}>
-        <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center'}}>
-          <TouchableOpacity 
-            style={{position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 30}} 
-            onPress={() => setImageViewerModalVisible(false)}
-          >
-            <X size={28} color="white" />
-          </TouchableOpacity>
-          <Image source={{uri: currentImageViewUrl}} style={{width: '100%', height: '80%'}} resizeMode="contain" />
-        </View>
-      </Modal>
+      {currentImageViewUrl && (
+        <ImageView
+          images={[{ uri: currentImageViewUrl }]}
+          imageIndex={0}
+          visible={imageViewerModalVisible}
+          onRequestClose={() => setImageViewerModalVisible(false)}
+        />
+      )}
 
     </SafeAreaView>
   );

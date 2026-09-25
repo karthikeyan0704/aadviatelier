@@ -21,6 +21,7 @@ import { API_ENDPOINTS } from '../constants/ApiConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import SuccessModal from '../components/SuccessModal';
+import CustomAlert from '../components/CustomAlert';
 
 export default function Profile() {
   const { user, updateUserSession, authenticatedFetch } = useAuth();
@@ -30,6 +31,7 @@ export default function Profile() {
   const [profilePicture, setProfilePicture] = useState(user?.profilePicture || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
+  const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '' });
   const router = useRouter();
   
   // USE REFS for base64 - refs survive across re-renders and never get lost
@@ -73,15 +75,15 @@ export default function Profile() {
 
         if (b64 && b64.length > 0) {
           base64Ref.current = b64;
-          Alert.alert('Photo Selected', 'Remember to tap "Update Profile" to save your changes.');
+          setCustomAlert({ visible: true, type: 'info', title: 'Photo Selected', message: 'Remember to tap "Update Profile" to save your changes.' });
         } else {
-          Alert.alert('❌ Error', 'Could not read image data. Please try a different photo.');
+          setCustomAlert({ visible: true, type: 'error', title: 'Error', message: 'Could not read image data. Please try a different photo.' });
           hasPendingImage.current = false;
           base64Ref.current = null;
         }
       }
     } catch (err) {
-      Alert.alert('❌ Pick Error', err.message || 'Failed to pick image');
+      setCustomAlert({ visible: true, type: 'error', title: 'Pick Error', message: err.message || 'Failed to pick image' });
       hasPendingImage.current = false;
       base64Ref.current = null;
     }
@@ -99,7 +101,7 @@ export default function Profile() {
 
   const handleUpdateProfile = async () => {
     if (!mobileNumber) {
-      Alert.alert('Error', 'Mobile Number is required');
+      setCustomAlert({ visible: true, type: 'error', title: 'Error', message: 'Mobile Number is required' });
       return;
     }
 
@@ -149,10 +151,10 @@ export default function Profile() {
         await updateUserSession(responseData.user);
         setSuccessModal({ visible: true, message: 'Profile updated successfully!' });
       } else {
-        Alert.alert('Server Error', responseData.message || responseData.error || 'Unknown error');
+        setCustomAlert({ visible: true, type: 'error', title: 'Server Error', message: responseData.message || responseData.error || 'Unknown error' });
       }
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      setCustomAlert({ visible: true, type: 'error', title: 'Update Error', message: error.message || 'Failed to update profile' });
     } finally {
       setIsSubmitting(false);
     }
@@ -284,6 +286,14 @@ export default function Profile() {
           setSuccessModal({ visible: false, message: '' }); 
           router.back(); 
         }} 
+      />
+
+      <CustomAlert
+        visible={customAlert.visible}
+        type={customAlert.type}
+        title={customAlert.title}
+        message={customAlert.message}
+        onDismiss={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

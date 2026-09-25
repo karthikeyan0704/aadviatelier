@@ -19,6 +19,8 @@ import { CheckCircle, Clock, Scissors, FileText, Sparkles, User, LogOut, AlertTr
 import { useRouter, useFocusEffect } from 'expo-router';
 import ConfirmModal from './ConfirmModal';
 import SuccessModal from './SuccessModal';
+import StateView from './StateView';
+import { CardSkeleton } from './Skeleton';
 
 export default function MasterDashboard() {
   const { user, logout } = useAuth();
@@ -82,11 +84,27 @@ export default function MasterDashboard() {
     }
   };
 
-  if (loading) {
+  if (loading && !refreshing && orders.length === 0) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={{flexDirection: 'row', alignItems: 'center'}}>
+            <View style={styles.avatar}>
+              <ActivityIndicator color={Colors.primary} />
+            </View>
+            <View style={{marginLeft: 15}}>
+              <Text style={styles.welcomeText}>Welcome,</Text>
+              <Text style={styles.userName}>Loading...</Text>
+            </View>
+          </View>
+        </View>
+        <StateView 
+          loading={loading && !refreshing}
+          error={null}
+          hasData={false}
+          SkeletonComponent={CardSkeleton}
+        />
+      </SafeAreaView>
     );
   }
 

@@ -339,13 +339,19 @@ export default function OrdersScreen() {
     const group = deleteGroup?.group;
     if (!group) return;
 
+    const orderIdsToDelete = group.orders.map(o => o._id);
+    // Optimistic UI update so they disappear instantly!
+    setOrders(prev => prev.filter(order => !orderIdsToDelete.includes(order._id)));
     setDeleteGroup(null);
+    setDetailGroup(null);
+
     try {
       await Promise.all(group.orders.map(order => axios.delete(`${API_ENDPOINTS.ORDERS}/${order._id}`)));
-      setDetailGroup(null);
       DeviceEventEmitter.emit('ordersChanged');
       fetchOrders();
     } catch (error) {
+      // Complete background refresh if deletion failed
+      fetchOrders();
       Alert.alert('Error', error.response?.data?.message || 'Failed to delete all orders.');
     }
   };

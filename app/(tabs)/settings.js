@@ -50,9 +50,15 @@ export default function SettingsScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <TouchableOpacity style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
-            <View style={[styles.avatar, user?.profilePicture && { backgroundColor: 'transparent' }]}>
-              {user?.profilePicture ? (
-                <Image source={{ uri: user.profilePicture }} style={{ width: 60, height: 60, borderRadius: 30 }} cachePolicy="none" contentFit="cover" />
+            <View style={[styles.avatar, user?.profilePicture ? { backgroundColor: 'transparent' } : null, { overflow: 'hidden' }]}>
+              {user?.profilePicture && user.profilePicture !== 'null' ? (
+                <Image 
+                  source={{ uri: user.profilePicture }} 
+                  style={{ width: 60, height: 60, borderRadius: 30 }} 
+                  cachePolicy="memory-disk" 
+                  contentFit="cover"
+                  transition={200}
+                />
               ) : (
                 <User size={32} color={Colors.white} />
               )}
