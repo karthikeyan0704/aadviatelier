@@ -101,13 +101,13 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Save to SecureStore
-      await SecureStore.setItemAsync('token', token);
-      await SecureStore.setItemAsync('refreshToken', data.refreshToken);
-      await SecureStore.setItemAsync('user', JSON.stringify(user));
+      if (token) await SecureStore.setItemAsync('token', token);
+      if (data.refreshToken) await SecureStore.setItemAsync('refreshToken', String(data.refreshToken));
+      if (user) await SecureStore.setItemAsync('user', JSON.stringify(user));
       
       return { token, user };
     } catch (error) {
-      throw typeof error === 'string' ? error : (error.message || 'Login failed');
+      throw typeof error === 'string' ? error : ((error && error.message) || 'Login failed');
     }
   }, []);
 
