@@ -30,6 +30,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import StaffDashboard from '../../components/StaffDashboard';
 import MasterDashboard from '../../components/MasterDashboard';
+import StateView from '../../components/StateView';
+import { DashboardSkeleton } from '../../components/Skeleton';
 
 function OwnerDashboard() {
   const { user } = useAuth();
@@ -37,14 +39,17 @@ function OwnerDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const router = useRouter();
 
   const fetchStats = useCallback(async () => {
     try {
+      setError(null);
       const response = await axios.get(API_ENDPOINTS.DASHBOARD);
       setStats(response.data);
     } catch (error) {
       if (error.response?.status !== 401) {
+        setError(error.message || 'Failed to fetch overall statistics');
         console.error('Failed to fetch stats', error);
       }
     } finally {
@@ -85,14 +90,6 @@ function OwnerDashboard() {
     </TouchableOpacity>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -109,36 +106,44 @@ function OwnerDashboard() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      <StateView 
+        loading={loading && !refreshing} 
+        error={error} 
+        hasData={!!stats} 
+        onRetry={fetchStats}
+        SkeletonComponent={DashboardSkeleton}
       >
-        <Text style={styles.sectionTitle}>Overview</Text>
-        
-        <View style={styles.statsGrid}>
-          <StatCard title="Today Deliveries" count={stats?.todayDeliveries} icon={Package} onPress={() => openOrders('today-deliveries')} />
-          <StatCard
-            title="Pending Orders"
-            count={stats?.pendingOrders}
-            icon={Clock}
-            onPress={() => openOrders('pending')}
-          />
-          <StatCard title="Overdue Orders" count={stats?.overdueOrders} icon={AlertTriangle} onPress={() => openOrders('overdue')} />
-          <StatCard title="Draft Orders" count={stats?.draftOrders} icon={FileText} onPress={() => openOrders('draft')} />
-          <StatCard title="Under Stitching" count={stats?.underStitching} icon={Scissors} onPress={() => openOrders('under-stitching')} />
-          <StatCard title="Aari Work Pending" count={stats?.aariWorkPending} icon={Sparkles} onPress={() => openOrders('aari-pending')} />
-          <StatCard title="Completed Orders" count={stats?.completedOrders} icon={CheckCircle} onPress={() => openOrders('completed')} />
-          <StatCard title="Payment Pending" count={stats?.paymentPending} icon={CreditCard} onPress={() => openOrders('payment-pending')} />
-        </View>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
+          <Text style={styles.sectionTitle}>Overview</Text>
+          
+          <View style={styles.statsGrid}>
+            <StatCard title="Today Deliveries" count={stats?.todayDeliveries} icon={Package} onPress={() => openOrders('today-deliveries')} />
+            <StatCard
+              title="Pending Orders"
+              count={stats?.pendingOrders}
+              icon={Clock}
+              onPress={() => openOrders('pending')}
+            />
+            <StatCard title="Overdue Orders" count={stats?.overdueOrders} icon={AlertTriangle} onPress={() => openOrders('overdue')} />
+            <StatCard title="Draft Orders" count={stats?.draftOrders} icon={FileText} onPress={() => openOrders('draft')} />
+            <StatCard title="Under Stitching" count={stats?.underStitching} icon={Scissors} onPress={() => openOrders('under-stitching')} />
+            <StatCard title="Aari Work Pending" count={stats?.aariWorkPending} icon={Sparkles} onPress={() => openOrders('aari-pending')} />
+            <StatCard title="Completed Orders" count={stats?.completedOrders} icon={CheckCircle} onPress={() => openOrders('completed')} />
+            <StatCard title="Payment Pending" count={stats?.paymentPending} icon={CreditCard} onPress={() => openOrders('payment-pending')} />
+          </View>
 
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/create-order')}>
-            <Plus size={24} color={Colors.white} />
-            <Text style={styles.actionButtonText}>Create New Order</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+          <View style={styles.quickActions}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/create-order')}>
+              <Plus size={24} color={Colors.white} />
+              <Text style={styles.actionButtonText}>Create New Order</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </StateView>
     </SafeAreaView>
   );
 }

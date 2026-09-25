@@ -22,6 +22,8 @@ import { Audio } from 'expo-av';
 import SuccessModal from '../components/SuccessModal';
 import ConfirmModal from '../components/ConfirmModal';
 import CustomAlert from '../components/CustomAlert';
+import StateView from '../components/StateView';
+import { OrderDetailSkeleton } from '../components/Skeleton';
 import { formatOrderId } from '../utils/formatters';
 import { buildInvoiceHtml } from '../utils/invoiceTemplate';
 
@@ -153,6 +155,7 @@ export default function OrderDetails() {
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch order details');
+      setOrder(null); // Clear to trigger error UI if it hard failed
     } finally { 
       setLoading(false); 
       setRefreshing(false);
@@ -484,28 +487,6 @@ export default function OrderDetails() {
     }
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerIcon}>
-            <ArrowLeft size={24} color={Colors.white} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Order Details</Text>
-          <View style={{ width: 40 }} />
-        </View>
-        <ActivityIndicator size="large" color={Colors.primary} style={{flex:1}} />
-      </SafeAreaView>
-    );
-  }
-
-  if (!order) return null;
-
-  const statusStyle = STATUS_COLORS[order.status] || STATUS_COLORS['Pending'];
-  const completedSteps = order.workflow?.filter(s => s.status === 'Completed').length || 0;
-  const totalSteps = order.workflow?.length || 12;
-  const progressPercent = Math.round((completedSteps / totalSteps) * 100);
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -513,7 +494,7 @@ export default function OrderDetails() {
           <ArrowLeft size={24} color={Colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Details</Text>
-        <View>
+        <View style={{ width: 40, alignItems: 'flex-end' }}>
           {(user?.role === 'owner' || user?.role === 'admin') && (
             <TouchableOpacity onPress={handleDeleteOrder} style={styles.headerIcon}>
               <Trash2 size={24} color={'#ffffffff'} />
@@ -522,307 +503,318 @@ export default function OrderDetails() {
         </View>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+      <StateView 
+        loading={loading && !refreshing} 
+        error={!order ? 'Failed to fetch order details' : null} 
+        hasData={!!order} 
+        onRetry={fetchOrderDetails}
+        SkeletonComponent={OrderDetailSkeleton}
       >
-        
-        {/* Customer Card */}
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <User size={24} color={Colors.primary} />
-            </View>
-            <View style={{flex: 1}}>
-              <Text style={styles.customerName}>{order.customer?.name}</Text>
-              <Text style={styles.customerPhone}>{order.customer?.mobileNumber}</Text>
-            </View>
-            <View style={[styles.statusBadge, {backgroundColor: statusStyle.bg, borderColor: statusStyle.border}]}>
-              <Text style={[styles.statusText, {color: statusStyle.text}]}>{order.status}</Text>
-            </View>
-          </View>
-          <View style={styles.contactRow}>
-            <TouchableOpacity style={styles.contactBtn} onPress={handleCall}>
-              <Phone size={18} color={Colors.primary} />
-              <Text style={styles.contactBtnText}>Call</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.contactBtn, {backgroundColor: '#25D36615'}]} onPress={handleWhatsApp}>
-              <MessageCircle size={18} color="#25D366" />
-              <Text style={[styles.contactBtnText, {color: '#25D366'}]}>WhatsApp</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Order Info Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Order Info</Text>
-          {order.status === 'Draft' && (user?.role === 'owner' || user?.role === 'admin') && (
-            <TouchableOpacity style={styles.confirmDraftButton} onPress={handleConfirmDraft}>
-              <CheckCircle size={18} color={Colors.white} />
-              <Text style={styles.confirmDraftButtonText}>Confirm Draft</Text>
-            </TouchableOpacity>
-          )}
-          <InfoRow label="Order ID" value={formatOrderId(order.orderId)} />
-          <InfoRow label="Created Date" value={new Date(order.createdAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'})} />
-          <InfoRow label="Due Date" value={new Date(order.deliveryDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} />
-          {order.createdBy && <InfoRow label="Created By" value={`${order.createdBy.name} (${order.createdBy.role === 'owner' ? 'Owner' : 'Admin'})`} />}
-          <InfoRow label="Category" value={order.category} />
-          <InfoRow label="Dress Type" value={order.dressType} />
-          <InfoRow label="Type" value={order.type || 'Stitching'} />
-          <InfoRow label="Quantity" value={String(order.quantity || 1)} />
-          <InfoRow label="Priority" value={order.priority || 'Normal'} highlight={order.priority === 'High'} />
-          {order.isAariWork && <InfoRow label="Aari Work" value="Yes ✨" highlight />}
-          {order.specialInstructions && <InfoRow label="Instructions" value={order.specialInstructions} />}
-          {order.audioInstruction && (
-            <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 10, backgroundColor: Colors.surface, borderRadius: 8, borderWidth: 1, borderColor: '#eee'}}>
-              <TouchableOpacity onPress={() => playAudio(order.audioInstruction)} style={{padding: 8, backgroundColor: Colors.primary+'20', borderRadius: 20}}>
-                {isPlaying ? <Square size={20} color={Colors.primary} /> : <Play size={20} color={Colors.primary} fill={Colors.primary} />}
-              </TouchableOpacity>
-                <View style={{flex: 1, marginHorizontal: 10}}>
-                  <View style={{height: 4, backgroundColor: '#ddd', borderRadius: 2, overflow: 'hidden'}}>
-                    <View style={{height: '100%', backgroundColor: Colors.primary, width: `${audioDuration > 0 ? (audioPosition / audioDuration) * 100 : 0}%`}} />
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+        >
+          {order && (
+            <>
+              {/* Customer Card */}
+              <View style={styles.card}>
+                <View style={styles.profileRow}>
+                  <View style={styles.avatar}>
+                    <User size={24} color={Colors.primary} />
                   </View>
-                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 4}}>
-                    <Text style={{fontSize: 10, color: Colors.textSecondary}}>{formatTime(audioPosition)}</Text>
-                    <Text style={{fontSize: 10, color: Colors.textSecondary}}>{formatTime(audioDuration)}</Text>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.customerName}>{order.customer?.name}</Text>
+                    <Text style={styles.customerPhone}>{order.customer?.mobileNumber}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, {backgroundColor: (STATUS_COLORS[order.status] || STATUS_COLORS.Pending).bg, borderColor: (STATUS_COLORS[order.status] || STATUS_COLORS.Pending).border}]}>
+                    <Text style={[styles.statusText, {color: (STATUS_COLORS[order.status] || STATUS_COLORS.Pending).text}]}>{order.status}</Text>
                   </View>
                 </View>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Dates</Text>
-          <View style={styles.dateGrid}>
-            <View style={styles.dateBox}>
-              <Calendar size={16} color={Colors.textSecondary} />
-              <Text style={styles.dateLabel}>Order Date</Text>
-              <Text style={styles.dateValue}>{new Date(order.createdAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
-            </View>
-            {order.trialDate && (
-              <View style={styles.dateBox}>
-                <Clock size={16} color={Colors.secondary} />
-                <Text style={styles.dateLabel}>Trial Date</Text>
-                <Text style={styles.dateValue}>{new Date(order.trialDate).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
+                <View style={styles.contactRow}>
+                  <TouchableOpacity style={styles.contactBtn} onPress={handleCall}>
+                    <Phone size={18} color={Colors.primary} />
+                    <Text style={styles.contactBtnText}>Call</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.contactBtn, {backgroundColor: '#25D36615'}]} onPress={handleWhatsApp}>
+                    <MessageCircle size={18} color="#25D366" />
+                    <Text style={[styles.contactBtnText, {color: '#25D366'}]}>WhatsApp</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
-            <View style={styles.dateBox}>
-              <Package size={16} color={Colors.primary} />
-              <Text style={styles.dateLabel}>Delivery</Text>
-              <Text style={[styles.dateValue, {color: Colors.primary, fontWeight: 'bold'}]}>{new Date(order.deliveryDate).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
-            </View>
-          </View>
-        </View>
 
-        {/* Reference Images */}
-        {(order.referenceImages?.length > 0 || order.referenceImage) && (
-          <View style={styles.card}>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
-              <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Reference Image{order.referenceImages?.length > 1 ? 's' : ''}</Text>
-              <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
-              {(order.referenceImages?.length > 0 ? order.referenceImages : [order.referenceImage]).map((imgUri, idx) => (
-                <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
-                  <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Sample Dress Photos */}
-        {(order.sampleDressPhotos?.length > 0 || order.sampleDressPhoto) && (
-          <View style={styles.card}>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
-              <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Sample Dress Photo{order.sampleDressPhotos?.length > 1 ? 's' : ''}</Text>
-              <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
-              {(order.sampleDressPhotos?.length > 0 ? order.sampleDressPhotos : [order.sampleDressPhoto]).map((imgUri, idx) => (
-                <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
-                  <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Billing Card */}
-        {user?.role !== 'cutting_master' && user?.role !== 'stitching_master' && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Billing</Text>
-          <View style={styles.billingGrid}>
-            <View style={[styles.billingBox, {borderLeftColor: Colors.primary}]}>
-              <Text style={styles.billingLabel}>Total</Text>
-              <Text style={[styles.billingValue, {color: Colors.primary}]}>₹{order.billing?.estimatedCost?.toLocaleString('en-IN') || 0}</Text>
-            </View>
-            <View style={[styles.billingBox, {borderLeftColor: Colors.success}]}>
-              <Text style={styles.billingLabel}>Paid</Text>
-              <Text style={[styles.billingValue, {color: Colors.success}]}>₹{(order.billing?.totalPaid || order.billing?.advancePaid || 0).toLocaleString('en-IN')}</Text>
-            </View>
-            <View style={[styles.billingBox, {borderLeftColor: Colors.error}]}>
-              <Text style={styles.billingLabel}>Balance</Text>
-              <Text style={[styles.billingValue, {color: Colors.error}]}>₹{(order.billing?.balanceDue || 0).toLocaleString('en-IN')}</Text>
-            </View>
-          </View>
-          <View style={styles.paymentStatusRow}>
-            <Text style={styles.paymentStatusLabel}>Payment Status:</Text>
-            <Text style={[styles.paymentStatusValue, {
-              color: order.billing?.paymentStatus === 'Paid' ? Colors.success : 
-                     order.billing?.paymentStatus === 'Partially Paid' ? Colors.warning : Colors.error
-            }]}>{order.billing?.paymentStatus || 'Unpaid'}</Text>
-          </View>
-          
-          {(user?.role === 'owner' || user?.role === 'admin') && (
-            <>
-              <View style={{flexDirection: 'row', gap: Spacing.sm}}>
-                <TouchableOpacity 
-                  style={[styles.recordPaymentBtn, {flex: 1}, order.billing?.paymentStatus === 'Paid' && {opacity: 0.5}]} 
-                  onPress={() => {
-                    if (order.billing?.paymentStatus === 'Paid') {
-                      showAlert('info', 'Fully Paid', 'This order is already fully paid.');
-                      return;
-                    }
-                    setPaymentModalVisible(true);
-                  }}
-                  disabled={order.billing?.paymentStatus === 'Paid'}
-                >
-                  <CreditCard size={18} color={Colors.white} />
-                  <Text style={styles.recordPaymentText}>{order.billing?.paymentStatus === 'Paid' ? 'Fully Paid' : 'Record Pay'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: Colors.secondary}]} onPress={() => setEditBillModalVisible(true)}>
-                  <Edit3 size={18} color={Colors.white} />
-                  <Text style={styles.recordPaymentText}>Edit Bill</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.invoiceBtnRow}>
-                <TouchableOpacity style={styles.invoiceBtn} onPress={() => handleOpenInvoiceModal(true)}>
-                  <FileText size={16} color={Colors.primary} />
-                  <Text style={styles.invoiceBtnText}>Estimate Bill</Text>
-                </TouchableOpacity>
-                {((order.status === 'Delivered') || (order.workflow?.length > 0 && order.workflow.every(step => step.status === 'Completed'))) && (
-                  <TouchableOpacity style={[styles.invoiceBtn, {backgroundColor: Colors.primary}]} onPress={() => handleOpenInvoiceModal(false)}>
-                    <MessageCircle size={16} color={Colors.white} />
-                    <Text style={[styles.invoiceBtnText, {color: Colors.white}]}>Final Bill</Text>
+              {/* Order Info Card */}
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Order Info</Text>
+                {order.status === 'Draft' && (user?.role === 'owner' || user?.role === 'admin') && (
+                  <TouchableOpacity style={styles.confirmDraftButton} onPress={handleConfirmDraft}>
+                    <CheckCircle size={18} color={Colors.white} />
+                    <Text style={styles.confirmDraftButtonText}>Confirm Draft</Text>
                   </TouchableOpacity>
                 )}
+                <InfoRow label="Order ID" value={formatOrderId(order.orderId)} />
+                <InfoRow label="Created Date" value={new Date(order.createdAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'})} />
+                <InfoRow label="Due Date" value={new Date(order.deliveryDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} />
+                {order.createdBy && <InfoRow label="Created By" value={`${order.createdBy.name} (${order.createdBy.role === 'owner' ? 'Owner' : 'Admin'})`} />}
+                <InfoRow label="Category" value={order.category} />
+                <InfoRow label="Dress Type" value={order.dressType} />
+                <InfoRow label="Type" value={order.type || 'Stitching'} />
+                <InfoRow label="Quantity" value={String(order.quantity || 1)} />
+                <InfoRow label="Priority" value={order.priority || 'Normal'} highlight={order.priority === 'High'} />
+                {order.isAariWork && <InfoRow label="Aari Work" value="Yes ✨" highlight />}
+                {order.specialInstructions && <InfoRow label="Instructions" value={order.specialInstructions} />}
+                {order.audioInstruction && (
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 10, backgroundColor: Colors.surface, borderRadius: 8, borderWidth: 1, borderColor: '#eee'}}>
+                    <TouchableOpacity onPress={() => playAudio(order.audioInstruction)} style={{padding: 8, backgroundColor: Colors.primary+'20', borderRadius: 20}}>
+                      {isPlaying ? <Square size={20} color={Colors.primary} /> : <Play size={20} color={Colors.primary} fill={Colors.primary} />}
+                    </TouchableOpacity>
+                      <View style={{flex: 1, marginHorizontal: 10}}>
+                        <View style={{height: 4, backgroundColor: '#ddd', borderRadius: 2, overflow: 'hidden'}}>
+                          <View style={{height: '100%', backgroundColor: Colors.primary, width: `${audioDuration > 0 ? (audioPosition / audioDuration) * 100 : 0}%`}} />
+                        </View>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 4}}>
+                          <Text style={{fontSize: 10, color: Colors.textSecondary}}>{formatTime(audioPosition)}</Text>
+                          <Text style={{fontSize: 10, color: Colors.textSecondary}}>{formatTime(audioDuration)}</Text>
+                        </View>
+                      </View>
+                  </View>
+                )}
               </View>
-            </>
-          )}
 
-        </View>
-        )}
-
-        {/* Workflow Card */}
-        {(user?.role === 'owner' || user?.role === 'admin') && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Assign Staff</Text>
-            <View style={{flexDirection: 'row', gap: Spacing.sm}}>
-              <TouchableOpacity 
-                style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: order.assignedTo?.cuttingMaster ? Colors.success : Colors.primary, paddingHorizontal: 5}]} 
-                onPress={() => { setAssignType('cutting'); setAssignModalVisible(true); }}
-              >
-                <User size={16} color={Colors.white} />
-                <Text style={[styles.recordPaymentText, {fontSize: 13, marginLeft: 4}]} numberOfLines={1} adjustsFontSizeToFit>
-                  {order.assignedTo?.cuttingMaster ? 'Edit Cutting' : '+ Cutting'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: order.assignedTo?.stitchingMaster ? Colors.success : Colors.secondary, paddingHorizontal: 5}]} 
-                onPress={() => { setAssignType('stitching'); setAssignModalVisible(true); }}
-              >
-                <User size={16} color={Colors.white} />
-                <Text style={[styles.recordPaymentText, {fontSize: 13, marginLeft: 4}]} numberOfLines={1} adjustsFontSizeToFit>
-                  {order.assignedTo?.stitchingMaster ? 'Edit Stitching' : '+ Stitching'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.workflowHeader} onPress={() => setWorkflowExpanded(!workflowExpanded)}>
-            <View>
-              <Text style={styles.sectionTitle}>Production Workflow</Text>
-              <Text style={styles.progressText}>{completedSteps}/{totalSteps} steps • {progressPercent}%</Text>
-            </View>
-            {workflowExpanded ? <ChevronUp size={20} color={Colors.textSecondary}/> : <ChevronDown size={20} color={Colors.textSecondary}/>}
-          </TouchableOpacity>
-          
-          {/* Progress Bar */}
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, {width: `${progressPercent}%`}]} />
-          </View>
-
-          {workflowExpanded && order.workflow?.map((step, index) => {
-            const isCompleted = step.status === 'Completed';
-            const Icon = WORKFLOW_ICONS[step.step] || Circle;
-            const isUpdating = updatingStep === index;
-            const isLockedDelivery = step.step === 'Delivery' && order.billing?.paymentStatus !== 'Paid';
-
-            const isRelevantForUser = () => {
-              if (user?.role === 'owner' || user?.role === 'admin') return true;
-              if (user?.role === 'cutting_master') return ['Marking', 'Cutting'].includes(step.step);
-              if (user?.role === 'stitching_master') return ['Stitching', 'Aari Work / Embroidery', 'Hook and Hem'].includes(step.step);
-              return false;
-            };
-            const canTap = isRelevantForUser();
-
-            return (
-              <TouchableOpacity 
-                key={index} 
-                style={[styles.workflowStep, isCompleted && styles.workflowStepDone, (isLockedDelivery || (!canTap && !isCompleted)) && {opacity: 0.7}]}
-                onPress={() => handleWorkflowUpdate(index)}
-                disabled={isCompleted || isUpdating || !canTap}
-              >
-                <View style={[styles.stepCircle, isCompleted && styles.stepCircleDone, isLockedDelivery && {backgroundColor: Colors.border}]}>
-                  {isUpdating ? <ActivityIndicator size="small" color={Colors.white} /> :
-                   isCompleted ? <CheckCircle size={16} color={Colors.white} /> : 
-                   <Text style={styles.stepNumber}>{index + 1}</Text>}
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Dates</Text>
+                <View style={styles.dateGrid}>
+                  <View style={styles.dateBox}>
+                    <Calendar size={16} color={Colors.textSecondary} />
+                    <Text style={styles.dateLabel}>Order Date</Text>
+                    <Text style={styles.dateValue}>{new Date(order.createdAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
+                  </View>
+                  {order.trialDate && (
+                    <View style={styles.dateBox}>
+                      <Clock size={16} color={Colors.secondary} />
+                      <Text style={styles.dateLabel}>Trial Date</Text>
+                      <Text style={styles.dateValue}>{new Date(order.trialDate).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
+                    </View>
+                  )}
+                  <View style={styles.dateBox}>
+                    <Package size={16} color={Colors.primary} />
+                    <Text style={styles.dateLabel}>Delivery</Text>
+                    <Text style={[styles.dateValue, {color: Colors.primary, fontWeight: 'bold'}]}>{new Date(order.deliveryDate).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</Text>
+                  </View>
                 </View>
-                <View style={{flex: 1}}>
-                  <Text style={[styles.stepName, isCompleted && styles.stepNameDone]}>{step.step}</Text>
-                  {isCompleted && step.updatedAt && (
-                    <Text style={styles.stepDate}>{new Date(step.updatedAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short'})}</Text>
+              </View>
+
+              {/* Reference Images */}
+              {(order.referenceImages?.length > 0 || order.referenceImage) && (
+                <View style={styles.card}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
+                    <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Reference Image{order.referenceImages?.length > 1 ? 's' : ''}</Text>
+                    <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
+                    {(order.referenceImages?.length > 0 ? order.referenceImages : [order.referenceImage]).map((imgUri, idx) => (
+                      <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
+                        <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Sample Dress Photos */}
+              {(order.sampleDressPhotos?.length > 0 || order.sampleDressPhoto) && (
+                <View style={styles.card}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm}}>
+                    <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Sample Dress Photo{order.sampleDressPhotos?.length > 1 ? 's' : ''}</Text>
+                    <Text style={{fontSize: 12, color: Colors.primary, fontWeight: 'bold'}}>Tap to view</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10}}>
+                    {(order.sampleDressPhotos?.length > 0 ? order.sampleDressPhotos : [order.sampleDressPhoto]).map((imgUri, idx) => (
+                      <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => { setCurrentImageViewUrl(imgUri); setImageViewerModalVisible(true); }}>
+                        <Image source={{uri: imgUri}} style={[styles.refImage, {width: 250}]} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Billing Card */}
+              {user?.role !== 'cutting_master' && user?.role !== 'stitching_master' && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Billing</Text>
+                <View style={styles.billingGrid}>
+                  <View style={[styles.billingBox, {borderLeftColor: Colors.primary}]}>
+                    <Text style={styles.billingLabel}>Total</Text>
+                    <Text style={[styles.billingValue, {color: Colors.primary}]}>₹{order.billing?.estimatedCost?.toLocaleString('en-IN') || 0}</Text>
+                  </View>
+                  <View style={[styles.billingBox, {borderLeftColor: Colors.success}]}>
+                    <Text style={styles.billingLabel}>Paid</Text>
+                    <Text style={[styles.billingValue, {color: Colors.success}]}>₹{(order.billing?.totalPaid || order.billing?.advancePaid || 0).toLocaleString('en-IN')}</Text>
+                  </View>
+                  <View style={[styles.billingBox, {borderLeftColor: Colors.error}]}>
+                    <Text style={styles.billingLabel}>Balance</Text>
+                    <Text style={[styles.billingValue, {color: Colors.error}]}>₹{(order.billing?.balanceDue || 0).toLocaleString('en-IN')}</Text>
+                  </View>
+                </View>
+                <View style={styles.paymentStatusRow}>
+                  <Text style={styles.paymentStatusLabel}>Payment Status:</Text>
+                  <Text style={[styles.paymentStatusValue, {
+                    color: order.billing?.paymentStatus === 'Paid' ? Colors.success : 
+                           order.billing?.paymentStatus === 'Partially Paid' ? Colors.warning : Colors.error
+                  }]}>{order.billing?.paymentStatus || 'Unpaid'}</Text>
+                </View>
+                
+                {(user?.role === 'owner' || user?.role === 'admin') && (
+                  <>
+                    <View style={{flexDirection: 'row', gap: Spacing.sm}}>
+                      <TouchableOpacity 
+                        style={[styles.recordPaymentBtn, {flex: 1}, order.billing?.paymentStatus === 'Paid' && {opacity: 0.5}]} 
+                        onPress={() => {
+                          if (order.billing?.paymentStatus === 'Paid') {
+                            showAlert('info', 'Fully Paid', 'This order is already fully paid.');
+                            return;
+                          }
+                          setPaymentModalVisible(true);
+                        }}
+                        disabled={order.billing?.paymentStatus === 'Paid'}
+                      >
+                        <CreditCard size={18} color={Colors.white} />
+                        <Text style={styles.recordPaymentText}>{order.billing?.paymentStatus === 'Paid' ? 'Fully Paid' : 'Record Pay'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: Colors.secondary}]} onPress={() => setEditBillModalVisible(true)}>
+                        <Edit3 size={18} color={Colors.white} />
+                        <Text style={styles.recordPaymentText}>Edit Bill</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.invoiceBtnRow}>
+                      <TouchableOpacity style={styles.invoiceBtn} onPress={() => handleOpenInvoiceModal(true)}>
+                        <FileText size={16} color={Colors.primary} />
+                        <Text style={styles.invoiceBtnText}>Estimate Bill</Text>
+                      </TouchableOpacity>
+                      {((order.status === 'Delivered') || (order.workflow?.length > 0 && order.workflow.every(step => step.status === 'Completed'))) && (
+                        <TouchableOpacity style={[styles.invoiceBtn, {backgroundColor: Colors.primary}]} onPress={() => handleOpenInvoiceModal(false)}>
+                          <MessageCircle size={16} color={Colors.white} />
+                          <Text style={[styles.invoiceBtnText, {color: Colors.white}]}>Final Bill</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </>
+                )}
+
+              </View>
+              )}
+
+              {/* Workflow Card */}
+              {(user?.role === 'owner' || user?.role === 'admin') && (
+                <View style={styles.card}>
+                  <Text style={styles.sectionTitle}>Assign Staff</Text>
+                  <View style={{flexDirection: 'row', gap: Spacing.sm}}>
+                    <TouchableOpacity 
+                      style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: order.assignedTo?.cuttingMaster ? Colors.success : Colors.primary, paddingHorizontal: 5}]} 
+                      onPress={() => { setAssignType('cutting'); setAssignModalVisible(true); }}
+                    >
+                      <User size={16} color={Colors.white} />
+                      <Text style={[styles.recordPaymentText, {fontSize: 13, marginLeft: 4}]} numberOfLines={1} adjustsFontSizeToFit>
+                        {order.assignedTo?.cuttingMaster ? 'Edit Cutting' : '+ Cutting'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.recordPaymentBtn, {flex: 1, backgroundColor: order.assignedTo?.stitchingMaster ? Colors.success : Colors.secondary, paddingHorizontal: 5}]} 
+                      onPress={() => { setAssignType('stitching'); setAssignModalVisible(true); }}
+                    >
+                      <User size={16} color={Colors.white} />
+                      <Text style={[styles.recordPaymentText, {fontSize: 13, marginLeft: 4}]} numberOfLines={1} adjustsFontSizeToFit>
+                        {order.assignedTo?.stitchingMaster ? 'Edit Stitching' : '+ Stitching'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.card}>
+                <TouchableOpacity style={styles.workflowHeader} onPress={() => setWorkflowExpanded(!workflowExpanded)}>
+                  <View>
+                    <Text style={styles.sectionTitle}>Production Workflow</Text>
+                    <Text style={styles.progressText}>{(order.workflow?.filter(s => s.status === 'Completed').length || 0)}/{(order.workflow?.length || 12)} steps • {Math.round(((order.workflow?.filter(s => s.status === 'Completed').length || 0) / (order.workflow?.length || 12)) * 100)}%</Text>
+                  </View>
+                  {workflowExpanded ? <ChevronUp size={20} color={Colors.textSecondary}/> : <ChevronDown size={20} color={Colors.textSecondary}/>}
+                </TouchableOpacity>
+                
+                {/* Progress Bar */}
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, {width: `${Math.round(((order.workflow?.filter(s => s.status === 'Completed').length || 0) / (order.workflow?.length || 12)) * 100)}%`}]} />
+                </View>
+
+                {workflowExpanded && order.workflow?.map((step, index) => {
+                  const isCompleted = step.status === 'Completed';
+                  const Icon = WORKFLOW_ICONS[step.step] || Circle;
+                  const isUpdating = updatingStep === index;
+                  const isLockedDelivery = step.step === 'Delivery' && order.billing?.paymentStatus !== 'Paid';
+
+                  const isRelevantForUser = () => {
+                    if (user?.role === 'owner' || user?.role === 'admin') return true;
+                    if (user?.role === 'cutting_master') return ['Marking', 'Cutting'].includes(step.step);
+                    if (user?.role === 'stitching_master') return ['Stitching', 'Aari Work / Embroidery', 'Hook and Hem'].includes(step.step);
+                    return false;
+                  };
+                  const canTap = isRelevantForUser();
+
+                  return (
+                    <TouchableOpacity 
+                      key={index} 
+                      style={[styles.workflowStep, isCompleted && styles.workflowStepDone, (isLockedDelivery || (!canTap && !isCompleted)) && {opacity: 0.7}]}
+                      onPress={() => handleWorkflowUpdate(index)}
+                      disabled={isCompleted || isUpdating || !canTap}
+                    >
+                      <View style={[styles.stepCircle, isCompleted && styles.stepCircleDone, isLockedDelivery && {backgroundColor: Colors.border}]}>
+                        {isUpdating ? <ActivityIndicator size="small" color={Colors.white} /> :
+                         isCompleted ? <CheckCircle size={16} color={Colors.white} /> : 
+                         <Text style={styles.stepNumber}>{index + 1}</Text>}
+                      </View>
+                      <View style={{flex: 1}}>
+                        <Text style={[styles.stepName, isCompleted && styles.stepNameDone]}>{step.step}</Text>
+                        {isCompleted && step.updatedAt && (
+                          <Text style={styles.stepDate}>{new Date(step.updatedAt).toLocaleDateString('en-GB', {day:'2-digit', month:'short'})}</Text>
+                        )}
+                      </View>
+                      {!isCompleted && canTap && (
+                        <Text style={[styles.tapHint, isLockedDelivery && {color: '#E53935', fontWeight: 'bold'}]}>
+                          {isLockedDelivery ? 'Payment Required' : 'Tap to complete'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Measurements Card */}
+              {order.measurements && Object.keys(order.measurements).filter(k => order.measurements[k] && typeof order.measurements[k] !== 'object' && !['_id', '__v', 'dressType', 'isSampleDress', 'sampleDressPhoto', 'customNotes'].includes(k)).length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.sectionTitle}>Measurements</Text>
+                  <View style={styles.measureGrid}>
+                    {Object.entries(order.measurements)
+                      .filter(([k, v]) => v !== undefined && v !== null && v !== '' && typeof v !== 'object' && !['_id', '__v', 'dressType', 'isSampleDress', 'sampleDressPhoto', 'customNotes'].includes(k))
+                      .map(([key, val]) => (
+                      <View key={key} style={styles.measureItem}>
+                        <Text style={styles.measureLabel}>{key.replace(/([A-Z])/g, ' $1').trim()}</Text>
+                        <Text style={styles.measureValue}>{String(val)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {order.measurements.customNotes && (
+                    <View style={{marginTop: Spacing.sm}}>
+                      <Text style={styles.measureLabel}>Notes</Text>
+                      <Text style={{fontSize: 14, color: Colors.text}}>{order.measurements.customNotes}</Text>
+                    </View>
                   )}
                 </View>
-                {!isCompleted && canTap && (
-                  <Text style={[styles.tapHint, isLockedDelivery && {color: '#E53935', fontWeight: 'bold'}]}>
-                    {isLockedDelivery ? 'Payment Required' : 'Tap to complete'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              )}
 
-        {/* Measurements Card */}
-        {order.measurements && Object.keys(order.measurements).filter(k => order.measurements[k] && typeof order.measurements[k] !== 'object' && !['_id', '__v', 'dressType', 'isSampleDress', 'sampleDressPhoto', 'customNotes'].includes(k)).length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Measurements</Text>
-            <View style={styles.measureGrid}>
-              {Object.entries(order.measurements)
-                .filter(([k, v]) => v !== undefined && v !== null && v !== '' && typeof v !== 'object' && !['_id', '__v', 'dressType', 'isSampleDress', 'sampleDressPhoto', 'customNotes'].includes(k))
-                .map(([key, val]) => (
-                <View key={key} style={styles.measureItem}>
-                  <Text style={styles.measureLabel}>{key.replace(/([A-Z])/g, ' $1').trim()}</Text>
-                  <Text style={styles.measureValue}>{String(val)}</Text>
-                </View>
-              ))}
-            </View>
-            {order.measurements.customNotes && (
-              <View style={{marginTop: Spacing.sm}}>
-                <Text style={styles.measureLabel}>Notes</Text>
-                <Text style={{fontSize: 14, color: Colors.text}}>{order.measurements.customNotes}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        <View style={{height: 40}} />
-      </ScrollView>
+              <View style={{height: 40}} />
+            </>
+          )}
+        </ScrollView>
+      </StateView>
 
       {/* Payment Modal */}
       <Modal visible={paymentModalVisible} transparent animationType="slide">
@@ -830,16 +822,16 @@ export default function OrderDetails() {
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Record Payment</Text>
-            <Text style={styles.modalSubtitle}>Balance Due: ₹{(order.billing?.balanceDue || 0).toLocaleString('en-IN')}</Text>
+            <Text style={styles.modalSubtitle}>Balance Due: ₹{(order?.billing?.balanceDue || 0).toLocaleString('en-IN')}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder={`Enter amount (max ₹${(order.billing?.balanceDue || 0).toLocaleString('en-IN')})`}
+              placeholder={`Enter amount (max ₹${(order?.billing?.balanceDue || 0).toLocaleString('en-IN')})`}
               keyboardType="numeric"
               value={paymentAmount}
               onChangeText={(val) => {
                 const cleaned = val.replace(/[^0-9.]/g, '');
                 const num = parseFloat(cleaned);
-                const balance = order.billing?.balanceDue || 0;
+                const balance = order?.billing?.balanceDue || 0;
                 if (!isNaN(num) && num > balance) {
                   setPaymentAmount(String(balance));
                   showAlert('warning', 'Amount Capped', `Maximum payable amount is ₹${balance.toLocaleString('en-IN')}`);
@@ -911,12 +903,12 @@ export default function OrderDetails() {
             </View>
             
             <View style={{backgroundColor: '#F8F9FA', padding: 15, borderRadius: 12, marginBottom: 25}}>
-              <Text style={{fontWeight: 'bold', fontSize: 16, marginBottom: 12, color: Colors.primary}}>{order.customer?.name}</Text>
-              <InfoRow label="Item" value={`${order.category} - ${order.dressType}`} />
-              <InfoRow label="Total Amount" value={`₹${order.billing?.estimatedCost || 0}`} />
-              <InfoRow label="Paid Amount" value={`₹${order.billing?.totalPaid || order.billing?.advancePaid || 0}`} />
+              <Text style={{fontWeight: 'bold', fontSize: 16, marginBottom: 12, color: Colors.primary}}>{order?.customer?.name}</Text>
+              <InfoRow label="Item" value={`${order?.category || ''} - ${order?.dressType || ''}`} />
+              <InfoRow label="Total Amount" value={`₹${order?.billing?.estimatedCost || 0}`} />
+              <InfoRow label="Paid Amount" value={`₹${order?.billing?.totalPaid || order?.billing?.advancePaid || 0}`} />
               <View style={{height: 1, backgroundColor: '#E0E0E0', my: 10}} />
-              <InfoRow label="Balance Due" value={`₹${order.billing?.balanceDue || 0}`} highlight />
+              <InfoRow label="Balance Due" value={`₹${order?.billing?.balanceDue || 0}`} highlight />
             </View>
 
             <View style={{gap: 12, paddingBottom: 20}}>
@@ -967,7 +959,7 @@ export default function OrderDetails() {
                     <Text style={{fontWeight: 'bold', fontSize: 16}}>{staff.name || 'Staff'} <Text style={{fontWeight: 'normal', fontSize: 12, color: Colors.textSecondary}}>({staff.role === 'cutting_master' ? 'Cutting' : 'Stitching'})</Text></Text>
                     <Text style={{color: Colors.textSecondary, fontSize: 13}}>{staff.mobileNumber}</Text>
                   </View>
-                  {(order.assignedTo?.cuttingMaster === staff._id || order.assignedTo?.stitchingMaster === staff._id) && (
+                  {(order?.assignedTo?.cuttingMaster === staff._id || order?.assignedTo?.stitchingMaster === staff._id) && (
                     <CheckCircle size={20} color={Colors.success} />
                   )}
                 </TouchableOpacity>

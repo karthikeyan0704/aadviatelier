@@ -8,11 +8,22 @@ import { User, LogOut, Shield, Bell, HelpCircle, ChevronRight, Users, UserPlus }
 import { useRouter } from 'expo-router';
 import SuccessModal from '../../components/SuccessModal';
 import ConfirmModal from '../../components/ConfirmModal';
+import { SettingsSkeleton } from '../../components/Skeleton';
+import StateView from '../../components/StateView';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    // Artificial delay to match the app's loading aesthetic for consistency
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogoutPress = () => {
     setLogoutModalVisible(true);
@@ -34,54 +45,62 @@ export default function SettingsScreen() {
         <Text style={styles.title}>Settings</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <TouchableOpacity style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
-          <View style={[styles.avatar, user?.profilePicture && { backgroundColor: 'transparent' }]}>
-            {user?.profilePicture ? (
-              <Image source={{ uri: user.profilePicture }} style={{ width: 60, height: 60, borderRadius: 30 }} cachePolicy="none" contentFit="cover" />
-            ) : (
-              <User size={32} color={Colors.white} />
-            )}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{user?.name || user?.mobileNumber || 'Admin'}</Text>
-            <Text style={styles.userRole}>{user?.role?.replace('_', ' ').toUpperCase() || 'OWNER'}</Text>
-          </View>
-          <ChevronRight size={20} color={Colors.textSecondary} />
-        </TouchableOpacity>
+      <StateView 
+        loading={loading} 
+        error={null} 
+        hasData={!loading} 
+        onRetry={() => {}}
+        SkeletonComponent={SettingsSkeleton}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
+            <View style={[styles.avatar, user?.profilePicture && { backgroundColor: 'transparent' }]}>
+              {user?.profilePicture ? (
+                <Image source={{ uri: user.profilePicture }} style={{ width: 60, height: 60, borderRadius: 30 }} cachePolicy="none" contentFit="cover" />
+              ) : (
+                <User size={32} color={Colors.white} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.userName}>{user?.name || user?.mobileNumber || 'Admin'}</Text>
+              <Text style={styles.userRole}>{user?.role?.replace('_', ' ').toUpperCase() || 'OWNER'}</Text>
+            </View>
+            <ChevronRight size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <SettingItem icon={Shield} title="Privacy & Security" onPress={() => router.push('/privacy-security')} />
-          <SettingItem icon={Bell} title="Notifications" onPress={() => router.push('/notifications')} />
-        </View>
-
-        {(user?.role === 'owner' || user?.role === 'admin') && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Team Management</Text>
-            <SettingItem 
-              icon={UserPlus} 
-              title="Add New Staff" 
-              onPress={() => router.push('/add-staff')} 
-            />
-            <SettingItem 
-              icon={Users} 
-              title="Staff List" 
-              onPress={() => router.push('/staff-list')} 
-            />
+            <Text style={styles.sectionTitle}>Account</Text>
+            <SettingItem icon={Shield} title="Privacy & Security" onPress={() => router.push('/privacy-security')} />
+            <SettingItem icon={Bell} title="Notifications" onPress={() => router.push('/notifications')} />
           </View>
-        )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Support</Text>
-          <SettingItem icon={HelpCircle} title="Help Center" onPress={() => router.push('/help-center')} />
-          <SettingItem icon={LogOut} title="Logout" color={Colors.error} onPress={handleLogoutPress} />
-        </View>
+          {(user?.role === 'owner' || user?.role === 'admin') && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Team Management</Text>
+              <SettingItem 
+                icon={UserPlus} 
+                title="Add New Staff" 
+                onPress={() => router.push('/add-staff')} 
+              />
+              <SettingItem 
+                icon={Users} 
+                title="Staff List" 
+                onPress={() => router.push('/staff-list')} 
+              />
+            </View>
+          )}
 
-        <View style={styles.footer}>
-          <Text style={styles.version}>Aadvi Boutique v1.0.0</Text>
-        </View>
-      </ScrollView>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Support</Text>
+            <SettingItem icon={HelpCircle} title="Help Center" onPress={() => router.push('/help-center')} />
+            <SettingItem icon={LogOut} title="Logout" color={Colors.error} onPress={handleLogoutPress} />
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.version}>Aadvi Boutique v1.0.0</Text>
+          </View>
+        </ScrollView>
+      </StateView>
 
       <ConfirmModal
         visible={logoutModalVisible}

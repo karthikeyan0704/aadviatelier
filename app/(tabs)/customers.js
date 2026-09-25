@@ -19,6 +19,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import SuccessModal from '../../components/SuccessModal';
+import StateView from '../../components/StateView';
+import { CardSkeleton } from '../../components/Skeleton';
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState([]);
@@ -26,6 +28,7 @@ export default function CustomersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [successModal, setSuccessModal] = useState({ visible: false, title: '', message: '' });
@@ -34,11 +37,13 @@ export default function CustomersScreen() {
 
   const fetchCustomers = async () => {
     try {
+      setError(null);
       const response = await axios.get(API_ENDPOINTS.CUSTOMERS);
       setCustomers(response.data);
       setFilteredCustomers(response.data);
     } catch (error) {
       if (error.response?.status !== 401) {
+        setError(error.message || 'Failed to fetch customers');
         console.error('Failed to fetch customers', error);
       }
     } finally {
@@ -142,47 +147,51 @@ export default function CustomersScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={filteredCustomers}
-        renderItem={renderCustomerItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListHeaderComponent={
-          <View style={styles.detailsSection}>
-            <View style={styles.detailsRow}>
-              <Text style={styles.subTitle}>Total Customers</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{filteredCustomers.length} Customers</Text>
+      <StateView 
+        loading={loading && !refreshing} 
+        error={error} 
+        hasData={filteredCustomers.length > 0} 
+        onRetry={fetchCustomers}
+        SkeletonComponent={CardSkeleton}
+      >
+        <FlatList
+          data={filteredCustomers}
+          renderItem={renderCustomerItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListHeaderComponent={
+            <View style={styles.detailsSection}>
+              <View style={styles.detailsRow}>
+                <Text style={styles.subTitle}>Total Customers</Text>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countText}>{filteredCustomers.length} Customers</Text>
+                </View>
+              </View>
+
+              <View style={styles.searchBarContainer}>
+                <Search size={20} color={Colors.textSecondary} style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by name or mobile..."
+                  placeholderTextColor={Colors.textSecondary}
+                  value={searchQuery}
+                  onChangeText={handleSearch}
+                />
               </View>
             </View>
+          }
+          ListEmptyComponent={
+            (!loading && !error) ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No records found</Text>
+              </View>
+            ) : null
+          }
+        />
+      </StateView>
 
-            <View style={styles.searchBarContainer}>
-              <Search size={20} color={Colors.textSecondary} style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by name or mobile..."
-                placeholderTextColor={Colors.textSecondary}
-                value={searchQuery}
-                onChangeText={handleSearch}
-              />
-            </View>
-          </View>
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No records found</Text>
-            </View>
-          ) : null
-        }
-      />
-
-
-
-      {loading && !refreshing && (
-        <ActivityIndicator style={styles.loader} size="large" color={Colors.primary} />
-      )}
+      {/* Floating Search Bar below header */}
 
       <ConfirmModal
         visible={deleteConfirmModal}

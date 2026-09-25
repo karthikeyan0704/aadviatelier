@@ -22,6 +22,8 @@ import { Search, ChevronRight, Share2, MessageCircle, FileText, X, Trash2 } from
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
+import StateView from '../../components/StateView';
+import { TableSkeleton } from '../../components/Skeleton';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -36,6 +38,7 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('Active');
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,10 +62,12 @@ export default function OrdersScreen() {
 
   const fetchOrders = async () => {
     try {
+      setError(null);
       const response = await axios.get(API_ENDPOINTS.ORDERS);
       setOrders(response.data);
     } catch (error) {
       if (error.response?.status !== 401) {
+        setError(error.message || 'Failed to fetch orders');
         console.error('Failed to fetch orders', error);
       }
     } finally {
@@ -373,15 +378,6 @@ export default function OrdersScreen() {
         .map(group => ({ type: 'staffCustomer', id: group.id, data: group }));
     }
 
-    if (activeTab === 'Past Due') {
-      const sortedOverdue = [...filtered].sort((a, b) => {
-        const dateA = a.deliveryDate ? new Date(a.deliveryDate).getTime() : Infinity;
-        const dateB = b.deliveryDate ? new Date(b.deliveryDate).getTime() : Infinity;
-        return dateA - dateB;
-      });
-      return sortedOverdue.map(order => ({ type: 'single', id: order._id, data: order }));
-    }
-
     const groups = {};
     
     filtered.forEach(order => {
@@ -642,43 +638,44 @@ export default function OrdersScreen() {
         </View>
 
         {/* List */}
-        <FlatList
-          data={displayData}
-          renderItem={renderOrderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            !loading ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>No Record Found!</Text>
-              </View>
-            ) : null
-          }
-        />
+        <StateView 
+          loading={loading && !refreshing}
+          hasData={displayData.length > 0} 
+          error={error} 
+          onRetry={fetchOrders}
+          SkeletonComponent={TableSkeleton}
+        >
+          <FlatList
+            data={displayData}
+            renderItem={renderOrderItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={
+              (!loading && !error) ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyText}>No Record Found!</Text>
+                </View>
+              ) : null
+            }
+          />
+        </StateView>
       </View>
-      
-      {loading && !refreshing && (
-        <ActivityIndicator style={styles.loader} size="large" color={Colors.primary} />
-      )}
 
       <Modal visible={Boolean(detailGroup)} transparent animationType="slide" onRequestClose={() => setDetailGroup(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.detailModalContent]}>
             <View style={styles.modalHandle} />
             <View style={styles.detailModalHeader}>
-              <TouchableOpacity 
-                onPress={() => setDetailGroup(null)} 
-                style={{ backgroundColor: 'transparent', marginRight: 16, padding: 4 }}
-              >
-                <X size={28} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
+              <View>
                 <Text style={styles.detailModalTitle}>{`${detailGroup?.customerName || 'Customer'}'s Orders`}</Text>
                 <Text style={styles.detailModalSubtitle}>
                   {detailGroup ? `${detailGroup.orders.length} Orders • ${formatGroupDate(detailGroup.dateKey)}` : ''}
                 </Text>
               </View>
+              <TouchableOpacity onPress={() => setDetailGroup(null)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -726,18 +723,15 @@ export default function OrdersScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, {padding: 24}]}>
             <View style={styles.modalHandle} />
-            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20}}>
-              <TouchableOpacity 
-                onPress={closeShareModal}
-                style={{ backgroundColor: 'transparent', marginRight: 16, padding: 4 }}
-              >
-                <X size={28} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              <Text style={{fontSize: 20, fontWeight: 'bold', color: Colors.text, flex: 1}}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
+              <Text style={{fontSize: 20, fontWeight: 'bold', color: Colors.text}}>
                 {shareModal.invoiceType
                   ? `${shareModal.invoiceType === 'final' ? 'Final' : 'Estimate'} Bill`
                   : 'Choose Bill Type'}
               </Text>
+              <TouchableOpacity onPress={closeShareModal}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
             </View>
 
             {shareModal.group && !shareModal.invoiceType && (
@@ -988,7 +982,8 @@ const styles = StyleSheet.create({
   },
   detailModalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 18,
   },
   detailModalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
