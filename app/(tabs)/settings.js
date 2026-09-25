@@ -15,14 +15,10 @@ export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [logoutModalVisible, setLogoutModalVisible] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    // Artificial delay to match the app's loading aesthetic for consistency
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
+    // We removed the artificial delay here based on your feedback
   }, []);
 
   const handleLogoutPress = () => {
