@@ -11,12 +11,13 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Camera, Save, Mic, Plus, Minus, Square, Play, Trash2, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, Save, Mic, Plus, Minus, Square, Play, Trash2, X, Image as ImageIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import axios from 'axios';
@@ -58,6 +59,7 @@ export default function OrderDetails() {
   const [successModal, setSuccessModal] = useState({ visible: false, message: '' });
   const [customAlert, setCustomAlert] = useState({ visible: false, type: 'info', title: '', message: '' });
   const [previewModal, setPreviewModal] = useState({ visible: false, imageUri: null, title: '' });
+  const [imageActionModal, setImageActionModal] = useState({ visible: false, type: null });
 
   const showAlert = (type, title, message) => {
     setCustomAlert({ visible: true, type, title, message });
@@ -224,7 +226,7 @@ export default function OrderDetails() {
   const pickImage = async (type) => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsMultipleSelection: true,
+      allowsEditing: true, // Enables native cropping UI
       quality: 0.8,
     });
 
@@ -235,6 +237,32 @@ export default function OrderDetails() {
         setSampleDressImages(prev => [...prev, ...result.assets]);
       }
     }
+  };
+
+  const captureImage = async (type) => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.status !== 'granted') {
+      showAlert('warning', 'Permission Denied', 'Camera permission is required to take live photos.');
+      return;
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true, // Enables native cropping UI
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      if (type === 'ref') {
+        setRefImages(prev => [...prev, ...result.assets]);
+      } else {
+        setSampleDressImages(prev => [...prev, ...result.assets]);
+      }
+    }
+  };
+
+  const handleImageOption = (type) => {
+    setImageActionModal({ visible: true, type });
   };
 
   const removeRefImage = (index) => {
@@ -504,7 +532,7 @@ export default function OrderDetails() {
                     </View>
                   ))}
                   <View style={[styles.photoButton, {flex: 0, width: 100, height: 100}]}>
-                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => pickImage('ref')}>
+                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => handleImageOption('ref')}>
                       <Camera size={24} color={Colors.textSecondary} />
                       <Text style={styles.photoText}>{refImages.length > 0 ? "Add More" : "Add Image"}</Text>
                     </TouchableOpacity>
@@ -531,7 +559,7 @@ export default function OrderDetails() {
                     </View>
                   ))}
                   <View style={[styles.photoButton, {flex: 0, width: 100, height: 100}]}>
-                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => pickImage('sample')}>
+                    <TouchableOpacity style={styles.emptyPhotoBtn} onPress={() => handleImageOption('sample')}>
                       <Camera size={24} color={Colors.textSecondary} />
                       <Text style={styles.photoText}>{sampleDressImages.length > 0 ? "Add More" : "Add Image"}</Text>
                     </TouchableOpacity>
@@ -755,6 +783,39 @@ export default function OrderDetails() {
           router.dismissAll(); 
         }} 
       />
+
+      {/* Custom UI Image Picker Modal */}
+      <Modal visible={imageActionModal.visible} transparent={true} animationType="fade" onRequestClose={() => setImageActionModal({ visible: false, type: null })}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setImageActionModal({ visible: false, type: null })}>
+          <View style={{ backgroundColor: Colors.white, width: '80%', borderRadius: BorderRadius.lg, padding: Spacing.xl, ...Shadows.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.md, textAlign: 'center' }}>Upload Image</Text>
+            <Text style={{ fontSize: 14, color: Colors.textSecondary, marginBottom: Spacing.xl, textAlign: 'center' }}>Choose an option for the order</Text>
+            
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', padding: Spacing.md, backgroundColor: Colors.primary + '15', borderRadius: BorderRadius.md, marginBottom: Spacing.md }}
+              onPress={() => { setImageActionModal({ visible: false, type: null }); setTimeout(() => captureImage(imageActionModal.type), 400); }}
+            >
+              <Camera size={24} color={Colors.primary} style={{ marginRight: Spacing.md }} />
+              <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.primary }}>Take Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', padding: Spacing.md, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.border }}
+              onPress={() => { setImageActionModal({ visible: false, type: null }); setTimeout(() => pickImage(imageActionModal.type), 400); }}
+            >
+              <ImageIcon size={24} color={Colors.textSecondary} style={{ marginRight: Spacing.md }} />
+              <Text style={{ fontSize: 16, fontWeight: '500', color: Colors.text }}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: Spacing.md, backgroundColor: Colors.error + '10', borderRadius: BorderRadius.md, marginTop: -Spacing.sm }}
+              onPress={() => setImageActionModal({ visible: false, type: null })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: Colors.error }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal visible={previewModal.visible} transparent={true} animationType="fade" onRequestClose={() => setPreviewModal({ visible: false, imageUri: null, title: '' })}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
